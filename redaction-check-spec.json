@@ -1,0 +1,419 @@
+{
+  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value bumps specVersion. Values agreed 2026-10-20; see docs/design/disclosure-redaction/design.md section 8.",
+  "specVersion": "1",
+  "units": {
+    "length": "PDF points in the page's user space after CTM and clipping, before /Rotate; origin bottom-left (rect = x0,y0,x1,y1 with x0<x1, y0<y1)",
+    "luminance": "L = 0.2126 R + 0.7152 G + 0.0722 B on 0..1 components as written in the PDF (no gamma decoding). DeviceGray g -> R=G=B=g. DeviceCMYK -> R=(1-C)(1-K), G=(1-M)(1-K), B=(1-Y)(1-K). ICCBased/CalRGB/Lab: use the alternate/N-component rule above. Indexed: look up the base. Separation/DeviceN: tint transform when available, else treat as unknown (not a candidate, record in checksSkipped detail)."
+  },
+  "verdicts": {
+    "levels": [
+      "fail",
+      "review",
+      "pass"
+    ],
+    "fileVerdict": "worst finding verdict; pass when there are no findings. A check listed in checksSkipped never yields pass for that check; the report must show it.",
+    "wording": {
+      "fail": "問題あり",
+      "review": "要確認",
+      "pass": "検査した{n}項目で問題は見つかりませんでした"
+    }
+  },
+  "drawOrder": {
+    "rule": "Page content stream(s) in order, with every Form XObject expanded at its Do (recursively, including nested forms, patterns are NOT expanded), then each annotation's normal appearance (/AP /N, honouring /F hidden and /OC off) in /Annots order. Annotations are always above page content.",
+    "textBeforeCandidateOnly": true
+  },
+  "candidate": {
+    "$comment": "A 'cover candidate' (黒塗り候補). Evaluated on the EFFECTIVE region: shape transformed by CTM and intersected with the current clip.",
+    "sources": [
+      "filledPath",
+      "strokedPath",
+      "image",
+      "imageMask",
+      "annotationAppearance"
+    ],
+    "dark": {
+      "maxLuminance": 0.25
+    },
+    "opaque": {
+      "minFillAlpha": 0.95,
+      "softMaskMeansNotOpaque": true,
+      "blendModesTreatedOpaque": [
+        "Normal",
+        "Compatible",
+        "Multiply",
+        "Darken"
+      ]
+    },
+    "size": {
+      "minShortSidePt": 3.0,
+      "minLongSidePt": 6.0,
+      "$comment": "Agreed: short side >= 3pt and long side >= 6pt, no area rule. A single masked digit at 8pt is about 5x8pt and must qualify. Thin rules (< 3pt) stay excluded; draw order removes header bands and table fills."
+    },
+    "rectangularity": {
+      "minAreaToOrientedBBox": 0.9,
+      "$comment": "Oriented (minimum-area) bounding box, so rotated rectangles qualify."
+    },
+    "strokedPath": {
+      "minLineWidthPt": 4.0,
+      "$comment": "marker-style blackouts drawn with a thick stroke; region = stroke outline"
+    },
+    "image": {
+      "darkPixelLuminance": 0.25,
+      "minDarkPixelFraction": 0.95,
+      "$comment": "an image counts as a cover candidate over the area where >= 95% of its decoded pixels are dark. ImageMask: candidate when the fill colour is dark. An image whose codec the implementation cannot decode is NOT a candidate; see imageDecoding."
+    },
+    "nonDarkOpaqueCover": {
+      "verdict": "review",
+      "$comment": "An opaque NON-dark fill drawn over earlier text also hides it (white-box cover, grey redaction box). Reported as A1 review, not fail, to avoid failing Excel-style cell overflow."
+    }
+  },
+  "glyphBox": {
+    "rule": "x from the glyph origin to origin + advance (Tw/Tc/Tz applied); y from baseline + descent to baseline + ascent with a FIXED ascent of 0.8 em and descent of -0.2 em; then transformed by Tm x CTM. Both implementations MUST use this box, not ink bounds, so coverage fractions agree.",
+    "ascentEm": 0.8,
+    "descentEm": -0.2,
+    "consultFontDescriptor": false,
+    "$comment": "FontDescriptor /Ascent and /Descent are deliberately NOT read: pdf.js and PDFium expose them differently and missing/zero values are common, so a fixed box is the only one both engines compute identically."
+  },
+  "imageDecoding": {
+    "rule": "When an implementation cannot decode an image's data (typically /DCTDecode, /JPXDecode, /JBIG2Decode or /CCITTFaxDecode, depending on the engine), every check that needs that image's pixels yields REVIEW for the affected region, never pass, and the report adds a checksSkipped entry.",
+    "affects": [
+      "A6",
+      "A4.imageBackground"
+    ],
+    "verdictWhenUndecodable": "review",
+    "checksSkippedReason": "image-codec-not-decodable:<Filter>",
+    "$comment": "<Filter> is the terminal filter name without the slash, e.g. image-codec-not-decodable:DCTDecode. Such an image is also not a cover candidate (its darkness is unknown). Corpus cases whose verdict depends on this carry expect.acceptVerdicts."
+  },
+  "checks": [
+    {
+      "id": "A1",
+      "title": "不透明な図形・画像の下に取り出せるテキスト",
+      "defaultVerdict": "fail",
+      "rule": "glyph drawn before a candidate with coveredFraction(glyphBox, candidate) >= coverFail",
+      "coverFail": 0.85
+    },
+    {
+      "id": "A2",
+      "title": "黒塗りが文字に一部しかかかっていない",
+      "defaultVerdict": "fail",
+      "rule": "coverPartialMin <= coveredFraction < coverFail for a glyph drawn before a candidate",
+      "coverPartialMin": 0.15
+    },
+    {
+      "id": "A3",
+      "title": "未適用の /Redact、または注釈で隠している",
+      "defaultVerdict": "fail",
+      "rule": "any /Redact annotation (regardless of what is under it); or an annotation appearance that is a candidate and covers text (coveredFraction >= coverPartialMin); /Highlight with opaque dark appearance counts"
+    },
+    {
+      "id": "A4",
+      "title": "白文字・背景同色・ページ外・クリップ外の文字",
+      "defaultVerdict": "review",
+      "rule": "text whose |L(text) - L(background)| < hiddenContrast, where background = colour painted at the glyph centre BEFORE the text (paper white when nothing): FAIL regardless of proximity. Glyph box outside the CropBox, or fully clipped out: FAIL when within nearCandidatePt of a candidate, else REVIEW. Tr 3 text is A5, not A4.",
+      "hiddenContrast": 0.15,
+      "nearCandidatePt": 20.0,
+      "imageBackground": "when the topmost painter under the glyph centre is an image, background = mean luminance of the image pixels under the glyph box; if the image cannot be decoded: REVIEW plus checksSkipped {check:\"A4\", reason:\"image-codec-not-decodable:<Filter>\"} (see imageDecoding), never pass",
+      "sameAsBackgroundVerdict": "fail",
+      "outsideClipOrCropBox": {
+        "nearCandidateVerdict": "fail",
+        "otherwiseVerdict": "review"
+      }
+    },
+    {
+      "id": "A5",
+      "title": "黒塗りの下の不可視テキスト（Tr 3）",
+      "defaultVerdict": "fail",
+      "rule": "Tr 3 (or 7) glyph with coveredFraction >= coverPartialMin under a candidate (glyph box, not run origin)"
+    },
+    {
+      "id": "A6",
+      "title": "画像の上に黒い図形を重ねただけ",
+      "defaultVerdict": "fail",
+      "rule": "image drawn, then a candidate over it, AND the decoded image pixels under the candidate are NOT dark (darkPixelFraction < candidate.image.minDarkPixelFraction). Pixels already dark = the image was really redacted (Acrobat / this editor) -> no finding. Image not decodable by the implementation: REVIEW plus checksSkipped {check:\"A6\", reason:\"image-codec-not-decodable:<Filter>\"} (see imageDecoding), never pass."
+    },
+    {
+      "id": "A7",
+      "title": "増分更新の旧版に別の内容",
+      "defaultVerdict": "fail",
+      "rule": "walk startxref/Prev to list revisions; for each earlier revision, extract text per page; fail when an earlier revision has text not present in the final revision, review when revisions exist but cannot be parsed"
+    },
+    {
+      "id": "A8",
+      "title": "構造ツリーの /ActualText・/Alt に黒塗り部分の文字",
+      "defaultVerdict": "fail",
+      "rule": "/ActualText, /Alt or /E on a struct element or BDC property list whose content (MCIDs, or the element's page area) intersects a candidate, OR whose string is not found in the page's extractable text while the page has candidates; else listed under A9 as review"
+    },
+    {
+      "id": "A9",
+      "title": "文書情報・XMP・しおり・添付・フォーム値・注釈本文・非表示レイヤー・サムネイル",
+      "defaultVerdict": "review",
+      "rule": "list every non-empty item with its content (for the screen only; the saved report keeps item kind and count, not the value)"
+    },
+    {
+      "id": "A10",
+      "title": "画像だけのページ",
+      "defaultVerdict": "review",
+      "rule": "page with no extractable text and at least one image covering >= imageOnlyCoverage of the CropBox",
+      "imageOnlyCoverage": 0.8
+    },
+    {
+      "id": "A11",
+      "title": "暗号化されていて検査できない",
+      "defaultVerdict": "review",
+      "rule": "the file is encrypted and could not be opened with an empty user password (and no password was supplied)"
+    }
+  ],
+  "finding": {
+    "type": "object",
+    "required": [
+      "check",
+      "verdict"
+    ],
+    "properties": {
+      "check": {
+        "enum": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6",
+          "A7",
+          "A8",
+          "A9",
+          "A10",
+          "A11"
+        ]
+      },
+      "verdict": {
+        "enum": [
+          "fail",
+          "review"
+        ]
+      },
+      "page": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1
+      },
+      "rect": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "x0": {
+            "type": "number"
+          },
+          "y0": {
+            "type": "number"
+          },
+          "x1": {
+            "type": "number"
+          },
+          "y1": {
+            "type": "number"
+          }
+        }
+      },
+      "recovered": {
+        "type": "string",
+        "$comment": "text found under the cover. SCREEN ONLY: never written to a saved report, a log, or a file, by either implementation"
+      },
+      "detail": {
+        "type": "string"
+      },
+      "evidence": {
+        "type": "object",
+        "$comment": "machine-comparable facts: coveredFraction, candidateSource, luminance, revisionIndex, ..."
+      }
+    }
+  },
+  "fileReport": {
+    "type": "object",
+    "required": [
+      "specVersion",
+      "fileName",
+      "byteLength",
+      "sha256",
+      "pageCount",
+      "verdict",
+      "findings",
+      "checksRun",
+      "checksSkipped"
+    ],
+    "properties": {
+      "specVersion": {
+        "type": "string"
+      },
+      "implementation": {
+        "type": "string",
+        "$comment": "e.g. abyo-editor 1.27.0 / browser-checker 2026.10"
+      },
+      "fileName": {
+        "type": "string"
+      },
+      "byteLength": {
+        "type": "integer"
+      },
+      "sha256": {
+        "type": "string"
+      },
+      "pageCount": {
+        "type": "integer"
+      },
+      "pageSizes": {
+        "type": "array"
+      },
+      "verdict": {
+        "enum": [
+          "fail",
+          "review",
+          "pass"
+        ]
+      },
+      "findings": {
+        "type": "array"
+      },
+      "checksRun": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "checksSkipped": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "check",
+            "reason"
+          ],
+          "properties": {
+            "check": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string",
+              "$comment": "free text, except the fixed form image-codec-not-decodable:<Filter> (imageDecoding)"
+            }
+          }
+        }
+      },
+      "notInspected": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "$comment": "fixed sentences, e.g. 画像の中に写った文字の内容は読み取っていない"
+      },
+      "elapsedMs": {
+        "type": "number"
+      },
+      "error": {
+        "type": "string"
+      }
+    }
+  },
+  "manifest": {
+    "$comment": "testdata/redaction-corpus/manifest.json: an object {specVersion, note, cases[]} (the browser checker's shape, adopted as is). Harnesses skip a case whose file is absent only when it is marked pending.",
+    "type": "object",
+    "required": [
+      "specVersion",
+      "cases"
+    ],
+    "properties": {
+      "specVersion": {
+        "type": "string",
+        "$comment": "must equal this file's specVersion"
+      },
+      "note": {
+        "type": "string"
+      },
+      "cases": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "file",
+            "expect",
+            "source"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "$comment": "relative to files/"
+            },
+            "expect": {
+              "type": "object",
+              "required": [
+                "verdict",
+                "checks"
+              ],
+              "properties": {
+                "verdict": {
+                  "enum": [
+                    "fail",
+                    "review",
+                    "pass"
+                  ],
+                  "$comment": "the verdict of an implementation that decodes every image"
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "$comment": "check ids that MUST be raised"
+                },
+                "mustNotFlag": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "$comment": "check ids whose appearance is a false positive"
+                },
+                "acceptVerdicts": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "fail",
+                      "review",
+                      "pass"
+                    ]
+                  },
+                  "$comment": "ONLY for codec-dependent cases (imageDecoding): the verdicts accepted from an implementation that cannot decode the case's image. Must contain verdict, and may not add pass."
+                }
+              }
+            },
+            "note": {
+              "type": "string",
+              "$comment": "never the recovered text itself"
+            },
+            "source": {
+              "enum": [
+                "generated",
+                "acrobat",
+                "abyo-editor"
+              ]
+            },
+            "editorOnly": {
+              "type": "boolean",
+              "$comment": "the browser checker may skip it; its verdict expectation still applies to the editor's checker"
+            },
+            "pending": {
+              "type": "boolean",
+              "$comment": "the file is not in the corpus yet (e.g. needs Acrobat); harnesses report it as absent and skip it. A case whose file exists must not be pending."
+            },
+            "madeBy": {
+              "type": "string",
+              "$comment": "for source abyo-editor/acrobat: how the file was produced"
+            }
+          }
+        }
+      }
+    }
+  }
+}

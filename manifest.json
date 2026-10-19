@@ -1,0 +1,290 @@
+{
+  "specVersion": "1",
+  "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on codec-dependent cases (spec imageDecoding). A pending case's file is absent and harnesses skip it.",
+  "cases": [
+    {
+      "file": "01-path-over-text.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "black rectangle laid over live text"
+    },
+    {
+      "file": "02-image-over-text.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "black image laid over live text"
+    },
+    {
+      "file": "03-black-square-annot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "hidden with a Square annotation only"
+    },
+    {
+      "file": "04-unapplied-redact-annot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "Redact annotation never applied"
+    },
+    {
+      "file": "05-white-text.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "text turned white on white paper"
+    },
+    {
+      "file": "06-ocr-layer-under-box.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "scan blacked out, OCR layer left under it"
+    },
+    {
+      "file": "07-black-rect-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "rectangle over a photo, image data untouched"
+    },
+    {
+      "file": "08-incremental-old-revision.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "redacted properly, earlier revision still in the file"
+    },
+    {
+      "file": "09-actualtext-leftover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A8"
+        ]
+      },
+      "source": "generated",
+      "note": "redacted on the page, text left in /ActualText"
+    },
+    {
+      "file": "10-partial-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "bar covers only part of the name"
+    },
+    {
+      "file": "11-metadata-author-path.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "author name and original path in document info"
+    },
+    {
+      "file": "12-acrobat-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "acrobat",
+      "note": "redacted correctly with Acrobat - must not be flagged. Not produced yet: needs Acrobat on Windows, from 01-path-over-text.pdf",
+      "pending": true
+    },
+    {
+      "file": "13-abyo-editor-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "abyo-editor",
+      "note": "redacted correctly with abyo PDF Editor - must not be flagged",
+      "madeBy": "abyo PDF Editor 1.26.106 development build: redaction on page 1, rect x=68 y=122 w=290 h=26 (top-left origin, points), saved as a new file"
+    },
+    {
+      "file": "13b-abyo-editor-correct-image.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "abyo-editor",
+      "note": "the photo of #07 redacted with abyo PDF Editor: the image pixels are rewritten to black (on this 4x4 image the editor's pixel safety padding blackens all of it) - A6 must not fire",
+      "madeBy": "abyo PDF Editor 1.26.106 development build: redaction on page 1 of 07-black-rect-over-photo.pdf, rect x=140 y=152 w=90 h=70 (top-left origin, points), saved as a new file"
+    },
+    {
+      "file": "14-black-band-normal.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "black heading band and filled table cells, nothing hidden"
+    },
+    {
+      "file": "15-scanned-image-only.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A10"
+        ],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A4",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "paper scan, no extractable text"
+    },
+    {
+      "file": "16-same-name-other-page.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "editorOnly": true,
+      "note": "requirement 3.6 (candidate detection): the name is properly removed on page 1 and left visible, uncovered, on page 5. Nothing is hidden, so the checker passes it - it does not judge completeness; the editor's candidate list should point at page 5. Made by 16_same_name.py"
+    },
+    {
+      "file": "90-generated-correct-redaction.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "stand-in for a correct redaction while 12 and 13 are produced"
+    },
+    {
+      "file": "91-image-pixels-rewritten.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "image pixels rewritten to black AND a bar drawn - the negative test for the A6 pixel condition"
+    },
+    {
+      "file": "92-scanned-with-ocr-layer.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "a scan with an OCR text layer and nothing redacted - the commonest real-world shape; guards the rule that an opaque image is only a blackout when its own pixels are dark"
+    }
+  ]
+}
