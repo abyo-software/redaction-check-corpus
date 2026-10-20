@@ -3908,6 +3908,1441 @@ def case_225_visible_half_opacity_text() -> bytes:
     return _alpha_text_page("0.5")
 
 
+
+def case_226_ring_with_its_hole_filled() -> bytes:
+    """A black ring with a second black shape filling its hole, over
+    live text: the page is solid black there and every word extracts.
+
+    Taking the holes of every cover out of the coverage of every cover
+    let the ring's hole cancel the shape that fills it, and the text
+    came out a fiftieth of a percent covered — reported as nothing at
+    all. A hole belongs to the cover that has it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 760, "Schedule, one row held back")
+        + text_op(200, 500, SECRET)
+        # a ring whose hole is a CHAMFERED shape, not a rectangle, so
+        # it cannot be taken out of the cover as a box
+        + b"0 0 0 rg\n150 450 m 500 450 l 500 560 l 150 560 l h\n"
+        + b"190 470 m 170 505 l 190 540 l 480 540 l 480 470 l h f\n"
+        # and the hole filled in by a second shape of the same outline
+        + b"0 0 0 rg\n190 470 m 170 505 l 190 540 l 480 540 l 480 470 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_227_soft_masked_text() -> bytes:
+    """Text drawn under a fully transparent soft mask, with no cover
+    anywhere: nothing of it reaches the page.
+
+    How much a soft mask lets through is a per-pixel matter this walker
+    cannot read — unknown, not zero. Writing zero into the alphas made
+    the line look like text painted with nothing, which is A5's
+    business, and A5 has nothing to say with no cover in sight. So the
+    file passed.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    group = pdf.stream(
+        b"0 g\n0 0 612 792 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 612 792]"
+        "/Group<</S/Transparency/CS/DeviceGray>>",
+    )
+    gs = pdf.add(
+        f"<</Type/ExtGState/SMask<</S/Luminosity/G {group} 0 R>>>>".encode()
+    )
+    body = (
+        text_op(72, 760, "Report, with one line held back")
+        + b"q\n/GS0 gs\n"
+        + text_op(100, 500, SECRET)
+        + b"Q\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_228_rotated_form_bbox() -> bytes:
+    """A Form XObject rotated 45 degrees, with text inside it that
+    falls outside the form's own /BBox.
+
+    A rotated box clips to a diamond. Recording the box around that
+    diamond adds four corners of page the form never reaches, and the
+    line sitting in one of them read as a line on the page.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    form = pdf.stream(
+        b"BT\n/F1 12 Tf\n1 0 0 1 110 50 Tm\n(" + SECRET.encode() + b") Tj\nET\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 100 100]"
+        f"/Resources<</Font<</F1 {f} 0 R>>>>",
+    )
+    turn = math.cos(math.radians(45))
+    body = (
+        text_op(72, 760, "Diagram, one label held back")
+        + f"q\n{turn:.5f} {turn:.5f} {-turn:.5f} {turn:.5f} 300 300 cm\n".encode()
+        + b"/Fm0 Do\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Fm0": form})
+    return pdf.build(root)
+
+
+def case_229_degenerate_clip_path() -> bytes:
+    """A clip path that doubles back on itself — `0 0 m 100 0 l 0 0 l
+    0 100 l h` — which encloses nothing, with text inside its bounding
+    box.
+
+    Four points over two x values and two y values is not enough to
+    make a rectangle: this path has four vertices and no area, and
+    taking it for `[0 0 100 100]` said the text inside was on the page
+    when the clip removes all of it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 760, "Plan, one note held back")
+        + b"q\n0 0 m 100 0 l 0 0 l 0 100 l h W n\n"
+        + b"BT\n0 0 0 rg\n/F1 10 Tf\n1 0 0 1 20 50 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_230_cover_clipped_to_a_triangle() -> bytes:
+    """Readable text outside a triangle that a black cover is clipped
+    to, with the cover drawn over it.
+
+    Clipping the cover to the triangle's bounding box instead of the
+    triangle itself put the corners the box adds into the cover, and
+    the line standing in one of them was reported as hidden.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 760, "Plan with one corner masked")
+        + b"BT\n0 0 0 rg\n/F1 10 Tf\n1 0 0 1 380 560 Tm\n(Room 12) Tj\nET\n"
+        + b"q\n200 400 m 440 400 l 200 600 l h W n\n"
+        + b"0 0 0 rg\n200 400 240 200 re\nf\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_231_dashed_corner() -> bytes:
+    """A dashed stroke turning a corner, with the gap falling exactly
+    on the corner, over an image blacked out under the real dashes.
+
+    A dash that merely starts at a vertex has a cap, not a join:
+    inventing a mitre there put a wedge of modelled cover 10pt beyond
+    the corner, over picture nobody covered.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+
+    def covered(x: float, y: float) -> bool:
+        # the vertical dash that starts at the corner, butt-capped
+        return 290 <= x <= 310 and 400 <= y <= 420
+
+    img = _image_from_test(pdf, 80, 250.0, 360.0, 120.0, 120.0, covered)
+    body = (
+        text_op(72, 760, "Route, drawn dashed")
+        + b"q\n120 0 0 120 250 360 cm\n/Im0 Do\nQ\n"
+        + b"q\n0 0 0 RG\n20 w\n0 J\n0 j\n[10 10] 10 d\n"
+        + b"280 400 m 300 400 l 300 420 l\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_232_pattern_stroked_outline() -> bytes:
+    """Mode 2 text over a black band: a black fill and a stroke painted
+    with a pattern, which this walker cannot resolve to a colour.
+
+    One unknown ink is enough to make the answer unknown. Judging the
+    line on its black fill alone reported it as black on black, while
+    the outline is there to read.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    cell = pdf.stream(
+        b"1 1 1 rg\n0 0 8 8 re\nf\n",
+        "/Type/Pattern/PatternType 1/PaintType 1/TilingType 1"
+        "/BBox[0 0 8 8]/XStep 8/YStep 8/Resources<<>>",
+    )
+    body = (
+        black_rect(68, 694, 290, 26)
+        + b"BT\n0 0 0 rg\n/Pattern CS\n/P0 SCN\n1 w\n2 Tr\n/F1 20 Tf\n"
+        + b"1 0 0 1 72 700 Tm\n(" + SECRET.encode() + b") Tj\nET\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/Pattern<</P0 {cell} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_233_multiply_text() -> bytes:
+    """Cyan text in Multiply mode over red: the result is black, which
+    a reader sees plainly against the red.
+
+    PDF blends componentwise, and a luminance cannot do that —
+    multiplying the two luminances gives a difference of 0.045 and
+    calls a readable line invisible. Every mode but Normal answers "not
+    known".
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Multiply>>")
+    body = (
+        b"1 0 0 rg\n68 694 290 26 re\nf\n"
+        + b"q\n/GS0 gs\nBT\n0 1 1 rg\n/F1 14 Tf\n1 0 0 1 72 700 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\nQ\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_234_anisotropic_curve() -> bytes:
+    """A curve under `1000 0 0 100`, where the x scale is ten times the
+    y, over an image blacked out along the real curve.
+
+    Flattening to the square root of the matrix's determinant takes the
+    geometric mean of those two scales, so the chords miss the curve by
+    several points on the page. The largest a vector can be stretched
+    is what the tolerance has to be measured against.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    start, c1, c2, end = (0.1, 4.0), (0.35, 6.0), (0.35, 2.0), (0.6, 4.0)
+
+    def on_curve(t: float) -> tuple[float, float]:
+        u = 1 - t
+        return (
+            1000 * (u * u * u * start[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * end[0]),
+            100 * (u * u * u * start[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * end[1]),
+        )
+
+    along = [on_curve(i / 400) for i in range(401)]
+
+    def covered(x: float, y: float) -> bool:
+        return any((x - px) ** 2 + (y - py) ** 2 <= 16.0**2 for px, py in along)
+
+    img = _image_from_test(pdf, 110, 50.0, 330.0, 600.0, 180.0, covered)
+    body = (
+        text_op(72, 760, "Trace, one stretch blacked out")
+        + b"q\n600 0 0 180 50 330 cm\n/Im0 Do\nQ\n"
+        + b"q\n1000 0 0 100 0 0 cm\n0 0 0 RG\n0.2 w\n1 J\n"
+        + b"0.1 4 m 0.35 6 0.35 2 0.6 4 c\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+
+def _smask_page(mask_grey: bytes, extra_off: bool = False) -> bytes:
+    """Live text, then a black cover drawn under a luminosity soft mask
+    whose group paints `mask_grey` over the whole page."""
+    pdf = Pdf()
+    f = helvetica(pdf)
+    group = pdf.stream(
+        mask_grey + b"\n0 0 612 792 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 612 792]"
+        "/Group<</S/Transparency/CS/DeviceGray>>",
+    )
+    on = pdf.add(
+        f"<</Type/ExtGState/SMask<</S/Luminosity/G {group} 0 R>>>>".encode()
+    )
+    off = pdf.add(b"<</Type/ExtGState/SMask/None>>")
+    body = text_op(72, 700, SECRET) + (
+        b"q\n/GS1 gs\n" + (b"/GS0 gs\n" if extra_off else b"")
+        + black_rect(68, 694, 290, 26)
+        + b"Q\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    states = f"/GS1 {on} 0 R" + (f"/GS0 {off} 0 R" if extra_off else "")
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<<{states}>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_235_smask_then_none() -> bytes:
+    """A soft mask turned on, turned off again with `/SMask /None`, and
+    then an ordinary opaque black cover over live text.
+
+    The library writes `false` for /SMask /None, as well as null and
+    the name itself. Testing only the last two left the mask in force
+    for the rest of the page, so a plain blackout was modelled as one
+    nobody could judge and the covered line went unreported.
+    """
+    return _smask_page(b"0 g", extra_off=True)
+
+
+def case_236_smasked_cover() -> bytes:
+    """Live text under a black cover drawn through a fully opaque
+    luminosity mask: the line is hidden on the page and extractable.
+
+    How much a soft mask lets through is a per-pixel matter this walker
+    cannot read, so the cover is never a blackout — but it is still a
+    cover. Dropping it from both lists let the hidden line go
+    unreported entirely.
+    """
+    return _smask_page(b"1 g")
+
+
+def case_237_collinear_clip_window() -> bytes:
+    """A black cover clipped to a convex window written with three
+    collinear points along one edge, over live text.
+
+    Choosing which side of an edge is "inside" from the next vertex
+    alone gives nothing when that vertex is on the edge, and the window
+    came out inside-out: the cover was reduced to a line of no area and
+    covered nothing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(200, 500, SECRET)
+        + b"q\n200 480 m 200 500 l 200 520 l 460 520 l 460 480 l h W n\n"
+        + b"0 0 0 rg\n150 450 400 120 re\nf\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_238_pentagram_clip() -> bytes:
+    """A black cover clipped to a pentagram, with text over one of its
+    arms.
+
+    A pentagram turns the same way at every point and goes round twice,
+    so a test for consistent turns calls it convex; clipping against it
+    edge by edge then keeps only its middle and leaves the arms — which
+    are painted — out of the cover.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    points = []
+    for i in range(5):
+        angle = 2 * math.pi * ((i * 2) % 5) / 5 + math.pi / 2
+        points.append((300 + 120 * math.cos(angle), 500 + 120 * math.sin(angle)))
+    star = f"{points[0][0]:.2f} {points[0][1]:.2f} m " + " ".join(
+        f"{x:.2f} {y:.2f} l" for x, y in points[1:]
+    ) + " h"
+    body = (
+        b"BT\n0 0 0 rg\n/F1 9 Tf\n1 0 0 1 285 600 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"q\n"
+        + star.encode()
+        + b" W n\n0 0 0 rg\n150 350 300 300 re\nf\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_239_bowtie_fill_over_text() -> bytes:
+    """A black self-crossing fill — a bow-tie — over live text, with the
+    text running through one of its lobes.
+
+    The windings cancel, so the area comes out near nothing and the
+    shape was not rectangular enough to be a cover at all: a lobe of
+    solid black over a line, reported as nothing. The hull stands in as
+    a bound, which carries it to a look rather than to either answer.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 10 Tf\n1 0 0 1 250 470 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 m 400 600 l 200 600 l 400 400 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+
+def case_240_uneven_bowtie_fill() -> bytes:
+    """A self-crossing fill whose two lobes are different sizes, over
+    live text standing in one of them.
+
+    Equal lobes cancel to no area at all, which is a signal; unequal
+    ones leave some, so a test on the area let this one through as an
+    exact shape. It then failed the rectangularity bar and was dropped
+    from every cover list — a lobe of solid black over a line,
+    reported as nothing. Crossings are asked about directly now, and a
+    shape that could not be established is a bound, which cannot be
+    used to rule the paint out.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 9 Tf\n1 0 0 1 220 520 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 450 m 400 550 l 200 530 l 360 450 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_241_clipped_hole_cover() -> bytes:
+    """A cover with a triangular hole on its right, clipped to a strip
+    on its left, over one large glyph.
+
+    The clip excludes the hole entirely, so the strip covers the
+    glyph's left fifth outright. Subtracting the hole from the cover's
+    area anyway — without putting it through the same clip — took the
+    whole cover away and the partly-covered glyph was reported as
+    nothing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 100 Tf\n1 0 0 1 200 450 Tm\n(H) Tj\nET\n"
+        + b"q\n200 450 20 100 re\nW n\n"
+        + b"0 0 0 rg\n200 450 m 300 450 l 300 550 l 200 550 l h\n"
+        + b"220 450 m 300 450 l 300 550 l h f\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_242_smasked_image_cover() -> bytes:
+    """A black image drawn through a fully transparent luminosity mask
+    over a visible heading: the heading reads perfectly.
+
+    The per-glyph darkness measurement promoted any locally dark image
+    to a blackout, going round the opacity question rather than
+    through it, and a heading nobody had covered was reported as
+    covered.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    group = pdf.stream(
+        b"0 g\n0 0 612 792 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 612 792]"
+        "/Group<</S/Transparency/CS/DeviceGray>>",
+    )
+    on = pdf.add(
+        f"<</Type/ExtGState/SMask<</S/Luminosity/G {group} 0 R>>>>".encode()
+    )
+    block = black_block(pdf)
+    body = text_op(72, 700, "Visible heading, nothing hidden") + (
+        b"q\n/GS1 gs\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/XObject<</Im0 {block} 0 R>>"
+            f"/ExtGState<</GS1 {on} 0 R>>>>/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_243_dash_gap_at_the_corner() -> bytes:
+    """A dashed stroke whose gap reaches a corner, so the next dash only
+    STARTS there, with readable text just past the corner.
+
+    Reading the dash state after the gap ends says "on", and a join was
+    added although the ink begins at the corner with a cap. The wedge
+    that invented covered the text beside it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 6 Tf\n1 0 0 1 222 492 Tm\n(Room 12) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n0 J\n0 j\n[10 10] 0 d\n"
+        + b"200 500 m 220 500 l 220 520 l\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_244_dash_through_the_corner() -> bytes:
+    """A dash that runs THROUGH a corner, with a glyph just outside the
+    join, under projecting caps.
+
+    A dash continuing through a vertex has a join there and no caps.
+    Giving every dash fragment caps at both ends added two squares of
+    ink the page never has, which covered the glyph beside the corner.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 4 Tf\n1 0 0 1 310.8 497.6 Tm\n(x) Tj\nET\n"
+        + b"q\n0 0 0 RG\n4 w\n2 J\n2 j\n[15 10] 0 d\n"
+        + b"300 500 m 310 500 l 310 510 l\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+
+def case_245_norotate_annot() -> bytes:
+    """A black Square annotation with /F 20 — Print and NoRotate — on a
+    /Rotate 90 page, over a line of text.
+
+    A NoRotate annotation stays upright while the page turns, rotating
+    about its /Rect's upper-left corner, so where it lands is not where
+    its /Rect says. Place it without that correction and the line it
+    hides on screen reads as uncovered. (pdf.js applies the correction
+    in the operator list, so an implementation built on it inherits
+    the right placement; the fixture is here to keep that true.)
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Square/Rect[68 694 358 720]"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 20>>"
+    )
+    root, _ = page(
+        pdf,
+        text_op(72, 700, SECRET),
+        font=f,
+        annots=f"/Annots[{annot} 0 R]",
+        extra_page="/Rotate 90",
+    )
+    return pdf.build(root)
+
+
+def case_246_ap_state_without_as() -> bytes:
+    """A Square annotation whose /AP /N is a STATE DICTIONARY — one
+    black appearance under /Off — with no /AS to say which state is
+    showing.
+
+    Viewers disagree: one picks the state from /V, then the parent's
+    /V, then /Off, and draws the black box over the line; another draws
+    nothing. Whichever this tool's renderer does, the honest answer is
+    that an appearance it could not resolve may be hiding the line, so
+    the file earns a look rather than a pass.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    appearance = pdf.stream(
+        b"0 0 0 rg\n0 0 290 26 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 290 26]",
+    )
+    annot = pdf.add(
+        f"<</Type/Annot/Subtype/Square/Rect[68 694 358 720]"
+        f"/AP<</N<</Off {appearance} 0 R>>>>/F 4>>".encode()
+    )
+    root, _ = page(
+        pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]"
+    )
+    return pdf.build(root)
+
+
+def case_247_empty_stencil_over_text() -> bytes:
+    """An 8x8 stencil with no bits set, drawn in black over a line of
+    text: it paints nothing at all, and the line reads perfectly.
+
+    A mask takes its darkness from the fill colour, and taking that
+    alone made its whole rectangle a cover — so a stencil that paints
+    nothing covered every word of the line. A stencil covers where it
+    paints, which is the same rule A6 uses.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    mask = _stencil(pdf, 8, lambda x, y: False)
+    body = text_op(72, 700, SECRET) + (
+        b"q\n0 0 0 rg\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": mask})
+    return pdf.build(root)
+
+
+
+def case_248_terminal_dash_cap() -> bytes:
+    """A dashed stroke whose last dash ends where the path does, with a
+    round cap, and a glyph just past that end.
+
+    A dash with length still to run carries on into the next segment —
+    unless there is no next segment, which is where an open path stops
+    and the cap goes on. Asking only whether the dash had length left
+    lost the terminal cap, and the round cap a reader sees over the
+    glyph went unmodelled.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 6 Tf\n1 0 0 1 222 497 Tm\n(x) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n1 J\n[100 20] 0 d\n200 500 m 220 500 l\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_249_filled_and_stroked_faint() -> bytes:
+    """Mode 2 text with the fill AND the stroke at a tenth of opacity
+    each, on white paper.
+
+    Neither ink reaches the visibility bar on its own — each moves the
+    page a tenth of the way from white to black — but they are laid one
+    over the other where they overlap, so the page moves twice and the
+    outline is plainly there to read (12.5% of the line's box carries
+    ink, the darkest pixel 0.82). Judging the inks one at a time called
+    a readable line hidden.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/ca 0.1/CA 0.1>>")
+    body = (
+        b"q\n/GS0 gs\nBT\n0 0 0 rg\n0 0 0 RG\n0.7 w\n2 Tr\n/F1 20 Tf\n"
+        b"1 0 0 1 72 700 Tm\n(" + SECRET.encode() + b") Tj\nET\nQ\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_250_explicit_closing_point() -> bytes:
+    """A correct redaction under a rectangle that writes its closing
+    point explicitly before `h`.
+
+    `200 490 m 280 490 l 280 520 l 200 520 l 200 490 l h` is an
+    ordinary rectangle. Testing for a self-crossing outline by index
+    alone made its first and closing edges — which meet at the start
+    point — look like a crossing, so the rectangle was marked as a
+    shape that could not be established and a correct redaction under
+    it became a cover nobody could judge. Edges that share a point
+    meet there by construction.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+
+    def covered(x: float, y: float) -> bool:
+        return 198 <= x <= 282 and 488 <= y <= 522
+
+    img = _image_from_test(pdf, 40, 180.0, 470.0, 120.0, 70.0, covered)
+    body = (
+        text_op(72, 760, "Detail, one label blacked out")
+        + b"q\n120 0 0 70 180 470 cm\n/Im0 Do\nQ\n"
+        + b"0 0 0 rg\n200 490 m 280 490 l 280 520 l 200 520 l 200 490 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+
+def case_251_explicit_normal_blend() -> bytes:
+    """A black bar over live text, with `/BM /Normal` stated
+    explicitly in an /ExtGState.
+
+    Plenty of producers write that line, and it changes nothing about
+    what the page looks like — but a checker comparing the library's
+    blend name against the PDF one matched neither, read the paint as
+    not opaque, and the bar was no cover at all. The plainest leak in
+    the corpus, hidden behind one word.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Normal>>")
+    body = text_op(72, 700, SECRET) + (
+        b"q\n/GS0 gs\n" + black_rect(68, 694, 290, 26) + b"Q\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_252_closed_dash_terminal_cap() -> bytes:
+    """A closed dashed square whose phase starts in a gap, with a glyph
+    under the round cap where the dashes run out.
+
+    A closed path's last dash runs into its first only if there was ink
+    there to run into. Treating "the path is closed" as proof of a join
+    lost the terminal cap, and the glyph that cap covers with it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 6 Tf\n1 0 0 1 201 493 Tm\n(x) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n1 J\n2 j\n[30 30] 45 d\n"
+        + b"200 500 m 220 500 l 220 520 l 200 520 l h S\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_253_crossing_named_vertex() -> bytes:
+    """A self-crossing fill that names its crossing point as a vertex,
+    over live text in one lobe.
+
+    Skipping every pair of edges that share a point — to forgive a
+    path that writes its closing point twice — also forgave the pair
+    that meets AT the crossing, which is how a crossing is written when
+    the path names it. The two lobes then cancelled and the fill was
+    dropped as not rectangular, so solid black over a line was
+    reported as nothing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 260 560 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 m 300 500 l 400 600 l 200 600 l 300 500 l"
+        + b" 400 400 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_254_diamond_hole() -> bytes:
+    """A black rectangle with a DIAMOND-shaped hole, and text outside
+    the diamond but inside its bounding box.
+
+    An oriented rectangle counts as rectangular, so the diamond went
+    into the list of holes taken out as boxes — which removed painted
+    corners, and the text standing on black in one of them read as
+    text on paper.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 230 430 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 m 400 400 l 400 600 l 200 600 l h\n"
+        + b"225 500 m 300 575 l 375 500 l 300 425 l h f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_255_nested_island() -> bytes:
+    """Three nested rectangles filled with `f*`, and text on the
+    innermost one.
+
+    Under the even-odd rule the outer ring and the innermost island are
+    both painted; the ring between them is not. Asking only "is
+    anything around me" made the island a hole, so the solid black it
+    paints over the line was reported as nothing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 285 495 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 200 200 re\n230 430 140 140 re\n"
+        + b"270 470 60 60 re\nf*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+
+def case_256_shape_in_an_L_notch() -> bytes:
+    """An independent black rectangle sitting in the notch of an
+    L-shaped subpath, both filled in one `f*`, over live text.
+
+    The rectangle is inside the L's bounding BOX and outside the L
+    itself, so deciding what encloses what from boxes made it the L's
+    hole and threw it away — and the text it really covers was
+    reported as nothing. What encloses what is a question about the
+    shapes.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 300 500 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 m 400 400 l 400 450 l 250 450 l 250 600 l"
+        + b" 200 600 l h\n280 480 200 40 re\nf*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_257_winding_island() -> bytes:
+    """Three nested rectangles wound positive, negative, positive and
+    filled with `f`, with text on the innermost one.
+
+    Under the nonzero rule the innermost winds to 1 and paints; asking
+    only "does any enclosing subpath wind the other way" made it a hole
+    and the solid black it lays over the line was reported as nothing.
+    Winding numbers add up.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 285 495 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n"
+        + b"200 400 m 400 400 l 400 600 l 200 600 l h\n"
+        + b"230 430 m 230 570 l 370 570 l 370 430 l h\n"
+        + b"270 470 m 330 470 l 330 530 l 270 530 l h\nf\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_258_white_multiply_over_band() -> bytes:
+    """A black band, an opaque WHITE rectangle over it under
+    `/BM /Multiply`, then black text on top.
+
+    Multiply keeps whichever is darker, so the white rectangle leaves
+    the band black and the black text on it cannot be read. Taking the
+    rectangle's declared colour as the new background said the text was
+    black on white — high contrast, nothing to report. A paint composes
+    with what is behind it; it does not replace it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Multiply>>")
+    body = (
+        black_rect(68, 694, 290, 26)
+        + b"q\n/GS0 gs\n1 1 1 rg\n68 694 290 26 re\nf\nQ\n"
+        + text_op(72, 700, SECRET)
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_259_screen_image_over_text() -> bytes:
+    """A black image laid over visible text under `/BM /Screen`.
+
+    Screen keeps whichever is lighter, so by the format a black image
+    in that mode hides nothing — and pdf.js paints it black anyway.
+    Whichever a reader's viewer does, a cover under a blend mode this
+    tool does not model is a cover it cannot speak for: a look, never
+    a confident failure and never silence.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Screen>>")
+    block = black_block(pdf)
+    body = text_op(72, 700, "Visible heading, nothing hidden") + (
+        b"q\n/GS0 gs\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/XObject<</Im0 {block} 0 R>>"
+            f"/ExtGState<</GS0 {gs} 0 R>>>>/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_260_closed_dash_wrap_cap() -> bytes:
+    """A closed dashed path whose ink runs through its closing point,
+    with a readable glyph just outside that corner.
+
+    The dash that arrives runs into the piece that left, so the corner
+    has a join and the piece that left has no start cap. Leaving its
+    cap on added a projecting square of ink the path does not paint,
+    over the glyph beside it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 5 Tf\n1 0 0 1 192 498 Tm\n(x) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n2 J\n[300 100] 0 d\n200 500 m 300 500 l h S\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_261_two_identical_diamonds() -> bytes:
+    """The same black diamond drawn twice over one glyph, each covering
+    about a seventh of its box.
+
+    Adding each shape's area cell by cell counts the overlap twice
+    where two shapes meet inside a cell without introducing a grid
+    line, so one seventh became two and a cover that is not there was
+    reported. A few convex shapes can be unioned exactly, by inclusion
+    and exclusion.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    diamond = b"200 503.15 m 202.15 501 l 200 498.85 l 197.85 501 l h"
+    body = (
+        b"BT\n0 0 0 rg\n/F1 10 Tf\n1 0 0 1 196 498 Tm\n(X) Tj\nET\n"
+        + b"0 0 0 rg\n"
+        + diamond
+        + b" f\n"
+        + diamond
+        + b" f\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+
+def case_262_overlapping_subpaths() -> bytes:
+    """Two rectangles that OVERLAP — not nest — filled in one `f*`,
+    with text where the second one paints alone.
+
+    Under even-odd their overlap cancels and the rest of each paints,
+    so one subpath has parts the fill rule answers differently and no
+    single point inside it can speak for both. Which part a sample
+    lands in depends on the order the vertices were written, and the
+    rectangle that covers the line was being dropped as unpainted. A
+    tangle like this is reported as a bound: a look, never silence.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 8 Tf\n1 0 0 1 402 448 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+        + b"0 0 0 rg\n200 400 200 100 re\n"
+        + b"390 440 m 390 460 l 410 460 l 410 440 l h f*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_263_nearly_opaque_band() -> bytes:
+    """A black rectangle at `/ca 0.9` over white paper, with black text
+    on top of it.
+
+    The page comes out at a tenth of the way to white, so the black
+    text on it is below the contrast a reader needs. The background was
+    reconstructed by skipping any paint below the opacity a BLACKOUT
+    needs — which is a different question — so the text was compared
+    with white paper and the contrast found was not there.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/ca 0.9>>")
+    body = (
+        b"q\n/GS0 gs\n" + black_rect(68, 694, 290, 26) + b"Q\n"
+        + text_op(72, 700, SECRET)
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+def case_264_white_text_on_screen_image() -> bytes:
+    """A black image under `/BM /Screen` on white paper, with white
+    text over it.
+
+    By the format Screen keeps whichever is lighter, so the page stays
+    white and the white text on it cannot be read; pdf.js paints the
+    image black, where it can. Replacing the background with the
+    image's own pixels ignored both its alpha and its blend and
+    reported nothing either way.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Screen>>")
+    block = black_block(pdf)
+    body = (
+        b"q\n/GS0 gs\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+        + b"BT\n1 1 1 rg\n/F1 14 Tf\n1 0 0 1 72 700 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/XObject<</Im0 {block} 0 R>>"
+            f"/ExtGState<</GS0 {gs} 0 R>>>>/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+
+def case_265_bar_across_a_U_notch() -> bytes:
+    """A bar whose two ends sit in the arms of a U-shaped subpath,
+    crossing its notch, both filled with `f*`.
+
+    Every vertex of the bar is inside the U, and the bar still crosses
+    it — a concave shape can contain all of something's corners and
+    none of its middle. Reading that as nesting made the bar the U's
+    hole and dropped it, and the notch it paints black over the text
+    was reported as nothing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 6 Tf\n1 0 0 1 294 482 Tm\n(X) Tj\nET\n"
+        + b"0 0 0 rg\n"
+        + b"200 400 m 400 400 l 400 500 l 310 500 l 310 420 l 290 420 l"
+        + b" 290 500 l 200 500 l h\n210 480 180 10 re\nf*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_266_terminal_dash_dot() -> bytes:
+    """`[5 5 0 5]` on a ten-unit line: the pattern reaches its
+    zero-length "on" element exactly at the end, which paints a dot
+    there under a round cap, over a glyph beside it.
+
+    The walk stopped when the line ran out and never emitted that dot,
+    so the ink a reader sees over the glyph went unmodelled.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 5 Tf\n1 0 0 1 112 498 Tm\n(X) Tj\nET\n"
+        + b"q\n0 0 0 RG\n10 w\n1 J\n[5 5 0 5] 0 d\n100 500 m 110 500 l S\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_267_stroke_swallows_fill() -> bytes:
+    """Mode 2 text with a black fill and a 100pt WHITE stroke: the
+    stroke is painted after the fill and swallows it, so nothing of the
+    line reaches the page (0% ink, the darkest pixel 0.90).
+
+    Letting any one ink's contrast settle the question called the line
+    readable on the strength of a fill nobody can see. Where the stroke
+    is narrow against the glyph both inks show, which is the ordinary
+    white-halo style, and that still passes.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n1 1 1 RG\n100 w\n2 Tr\n/F1 20 Tf\n"
+        b"1 0 0 1 72 700 Tm\n(" + SECRET.encode() + b") Tj\nET\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_268_half_transparent_image() -> bytes:
+    """A black image with a constant /SMask of 128 laid over a visible
+    heading: it renders mid-grey and the heading reads through it.
+
+    Decoded pixels arrive as RGBA with alpha 128, and treating a pixel
+    as either transparent or solid at the halfway mark made them solid
+    black — a cover that hides nothing, reported as one that does.
+    Composed over paper by their own alpha they are mid-grey, which is
+    no blackout; the cover still earns a look, since how much it hides
+    is a matter of degree.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    smask = pdf.stream(
+        bytes([128] * 16),
+        "/Type/XObject/Subtype/Image/Width 4/Height 4"
+        "/ColorSpace/DeviceGray/BitsPerComponent 8",
+    )
+    img = pdf.stream(
+        bytes([0] * 48),
+        "/Type/XObject/Subtype/Image/Width 4/Height 4"
+        f"/ColorSpace/DeviceRGB/BitsPerComponent 8/SMask {smask} 0 R",
+    )
+    body = text_op(72, 700, "Visible heading, nothing hidden") + (
+        b"q\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_269_white_over_unknown_blend() -> bytes:
+    """A black rectangle in a blend mode this tool does not model, an
+    opaque white rectangle over it, then white text.
+
+    The page is certainly white there, so the text is certainly
+    invisible. An opaque paint in Normal replaces whatever was under
+    it, known or not — and keeping "not known" from the earlier paint
+    turned a definite white-on-white finding into a look.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    gs = pdf.add(b"<</Type/ExtGState/BM/Screen>>")
+    body = (
+        b"q\n/GS0 gs\n" + black_rect(68, 694, 290, 26) + b"Q\n"
+        + b"1 1 1 rg\n68 694 290 26 re\nf\n"
+        + b"BT\n1 1 1 rg\n/F1 14 Tf\n1 0 0 1 72 700 Tm\n("
+        + SECRET.encode()
+        + b") Tj\nET\n"
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>/ExtGState<</GS0 {gs} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode(),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode())
+    return pdf.build(pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode()))
+
+
+
+def case_270_far_control_curve() -> bytes:
+    """A 20pt stroke along a curve whose control points are hundreds of
+    thousands of units off the page, with a glyph under where the real
+    curve runs.
+
+    Sixteen chords through such a curve peak a hundred points below it,
+    so an extent built from the points this walker sampled does not
+    reach the ink — and the coverage test rejects a paint by its extent
+    before it ever looks at the shape. A Bézier lies inside the convex
+    hull of its control points, which bounds it exactly where an error
+    estimate did not.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 6 Tf\n1 0 0 1 300 486 Tm\n(X) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n"
+        + b"100 -422000 m 233.333 132666.667 366.667 141200 500 -396400 c\nS\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+
+def _no_widths_font(pdf: Pdf) -> int:
+    """A font the file neither embeds nor names from the standard
+    fourteen, with no /Widths: every viewer substitutes a face and
+    guesses the advances."""
+    return pdf.add(
+        b"<</Type/Font/Subtype/TrueType/BaseFont/NotARealFaceMT"
+        b"/FirstChar 32/LastChar 255/Encoding/WinAnsiEncoding>>"
+    )
+
+
+def case_271_estimated_positions_clear() -> bytes:
+    """A line in a font with no widths, measured CLEAR of a black box
+    on the same page.
+
+    Where the file leaves a font's advances to the viewer, the position
+    of every letter is that viewer's estimate — and two viewers
+    substituting different faces put the tail of a line in different
+    places. A cover decision taken on one of them does not carry to a
+    reader using another, so a page with such a font, a cover on it,
+    and nothing reported about the text earns a look rather than a
+    pass.
+    """
+    pdf = Pdf()
+    font = _no_widths_font(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 20 Tf\n1 0 0 1 80 700 Tm\n(SECRET) Tj\nET\n"
+        + black_rect(280, 694, 200, 30)
+    )
+    root, _ = page(pdf, body, font=font)
+    return pdf.build(root)
+
+
+def case_272_font_without_widths() -> bytes:
+    """The same font with a longer line, whose tail this renderer's
+    substituted metrics put under the box.
+
+    #271's companion: a definite finding stands on its own and needs no
+    look beside it. Another viewer's metrics may put the tail
+    elsewhere, which is what #271 is about.
+    """
+    pdf = Pdf()
+    font = _no_widths_font(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 20 Tf\n1 0 0 1 80 700 Tm\n(WWWWWWWWWWSECRET) Tj\nET\n"
+        + black_rect(280, 694, 200, 30)
+    )
+    root, _ = page(pdf, body, font=font)
+    return pdf.build(root)
+
+
+def case_273_encrypt_direct_dictionary() -> bytes:
+    """RC4 encryption whose /Encrypt is written into the trailer as a
+    dictionary rather than as an indirect reference, with a line of
+    text under a black box.
+
+    A reader that recognises only the reference form opens the file,
+    never decrypts it, and finds an empty page — which every check
+    passes over. pdf.js handles both forms, so this engine reports the
+    covered line either way; the fixture is here to keep that true.
+    """
+    return _encrypted_pdf_with_cover(direct=True)
+
+
+def case_274_encrypt_indirect_reference() -> bytes:
+    """#273 with the usual indirect /Encrypt, as the guard that the two
+    forms are read the same way."""
+    return _encrypted_pdf_with_cover(direct=False)
+
+
+def _encrypted_pdf_with_cover(direct: bool) -> bytes:
+    """#273/#274: a readable line under a black box, behind RC4 with an
+    empty user password, written by hand so the /Encrypt entry can take
+    either form."""
+
+    def padded(pw: str) -> bytes:
+        return (pw.encode("latin-1") + _PW_PAD)[:32]
+
+    owner_entry = _rc4(hashlib.md5(padded("owner")).digest()[:5], padded(""))
+    digest = hashlib.md5()
+    digest.update(padded(""))
+    digest.update(owner_entry)
+    digest.update(struct.pack("<i", _ENC_P))
+    digest.update(_ENC_ID)
+    file_key = digest.digest()[:5]
+    user_entry = _rc4(file_key, _PW_PAD)
+
+    def object_key(num: int, gen: int = 0) -> bytes:
+        extra = bytes(
+            [num & 0xFF, (num >> 8) & 0xFF, (num >> 16) & 0xFF, gen & 0xFF, (gen >> 8) & 0xFF]
+        )
+        return hashlib.md5(file_key + extra).digest()[:10]
+
+    body = (
+        b"BT /F1 14 Tf 72 700 Td (" + SECRET.encode() + b") Tj ET\n"
+        + b"0 0 0 rg 68 694 290 26 re f\n"
+    )
+    stream = _rc4(object_key(5), body)
+    encrypt = (
+        b"<</Filter/Standard/V 1/R 2/O <"
+        + owner_entry.hex().encode("ascii")
+        + b">/U <"
+        + user_entry.hex().encode("ascii")
+        + b">/P "
+        + str(_ENC_P).encode("ascii")
+        + b">>"
+    )
+    objects = {
+        1: b"<</Type/Catalog/Pages 2 0 R>>",
+        2: b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        3: f"<</Type/Page/Parent 2 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+        "/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>".encode("ascii"),
+        4: b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        5: b"<</Length "
+        + str(len(stream)).encode("ascii")
+        + b">>\nstream\n"
+        + stream
+        + b"\nendstream",
+    }
+    if not direct:
+        objects[6] = encrypt
+
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = {}
+    for num in sorted(objects):
+        offsets[num] = len(out)
+        out += str(num).encode("ascii") + b" 0 obj\n" + objects[num] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 " + str(len(objects) + 1).encode("ascii") + b"\n"
+    out += b"0000000000 65535 f \n"
+    for num in sorted(objects):
+        out += f"{offsets[num]:010d} 00000 n \n".encode("ascii")
+    ident = _ENC_ID.hex().encode("ascii")
+    out += (
+        b"trailer\n<</Size "
+        + str(len(objects) + 1).encode("ascii")
+        + b"/Root 1 0 R/Encrypt "
+        + (encrypt if direct else b"6 0 R")
+        + b"/ID[<"
+        + ident
+        + b"><"
+        + ident
+        + b">]>>\nstartxref\n"
+        + str(xref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+    return bytes(out)
+
+
+
+def case_275_bar_with_named_crossings() -> bytes:
+    """A bar laid across the notch of a U, with its intersections with
+    the U written in as vertices, both filled with `f*`.
+
+    Every corner of the bar is then inside the U and no edge PROPERLY
+    crosses one — the edges touch at those vertices — so a tangle test
+    that asks about crossings alone took the bar for a hole and dropped
+    it, and the black it paints across the notch over the text was
+    reported as nothing. Two subpaths whose interiors meet without one
+    being inside the other are a tangle however the path is written.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 7 Tf\n1 0 0 1 196 246 Tm\n(X) Tj\nET\n"
+        + b"0 0 0 rg\n"
+        + b"100 100 m 300 100 l 300 300 l 220 300 l 220 200 l 180 200 l"
+        + b" 180 300 l 100 300 l h\n"
+        + b"120 240 m 180 240 l 220 240 l 280 240 l 280 260 l 220 260 l"
+        + b" 180 260 l 120 260 l h f*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_276_zero_length_dot() -> bytes:
+    """`200 500 m 200 500 l S` with a 20pt round cap: a dot, over a
+    glyph.
+
+    Collapsing the repeated point left no segment to paint the cap
+    from, so the dot a reader sees went unmodelled entirely.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n/F1 7 Tf\n1 0 0 1 198 497 Tm\n(X) Tj\nET\n"
+        + b"q\n0 0 0 RG\n20 w\n1 J\n200 500 m 200 500 l S\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_277_stretched_text_matrix() -> bytes:
+    """Mode 2 text under a text matrix that stretches tenfold ACROSS the
+    line, with a 5pt white stroke over a black fill.
+
+    A matrix that stretches the line sideways does not widen the stroke
+    across the stems it outlines, and taking the largest stretch the
+    matrix can apply called a 5pt stroke 50pt, decided it had swallowed
+    the fill, and reported a line that is plainly there (13.9% of its
+    box carries ink) as hidden.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"BT\n0 0 0 rg\n1 1 1 RG\n5 w\n2 Tr\n/F1 20 Tf\n"
+        b"10 0 0 1 40 700 Tm\n(" + SECRET.encode() + b") Tj\nET\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_278_half_image_over_black_band() -> bytes:
+    """An opaque black band, a half-transparent black image over it,
+    then black text: the band shows through and the text cannot be
+    read.
+
+    Flattening the image's pixels over paper before handing them on
+    made them mid-grey, which then REPLACED the black band — so the
+    text read as black on grey, with contrast enough to pass. A pixel's
+    colour and its alpha have to stay apart until there is something to
+    lay it over.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    smask = pdf.stream(
+        bytes([128] * 16),
+        "/Type/XObject/Subtype/Image/Width 4/Height 4"
+        "/ColorSpace/DeviceGray/BitsPerComponent 8",
+    )
+    img = pdf.stream(
+        bytes([0] * 48),
+        "/Type/XObject/Subtype/Image/Width 4/Height 4"
+        f"/ColorSpace/DeviceRGB/BitsPerComponent 8/SMask {smask} 0 R",
+    )
+    body = (
+        black_rect(68, 694, 290, 26)
+        + b"q\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+        + text_op(72, 700, SECRET)
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
 CASES = {
     "01-path-over-text": case_01_path_over_text,
     "02-image-over-text": case_02_image_over_text,
@@ -4058,6 +5493,59 @@ CASES = {
     "223-doubling-back-stroke": case_223_doubling_back_stroke,
     "224-faint-text-over-band": case_224_faint_text_over_band,
     "225-visible-half-opacity-text": case_225_visible_half_opacity_text,
+    "226-ring-with-its-hole-filled": case_226_ring_with_its_hole_filled,
+    "227-soft-masked-text": case_227_soft_masked_text,
+    "228-rotated-form-bbox": case_228_rotated_form_bbox,
+    "229-degenerate-clip-path": case_229_degenerate_clip_path,
+    "230-cover-clipped-to-a-triangle": case_230_cover_clipped_to_a_triangle,
+    "231-dashed-corner": case_231_dashed_corner,
+    "232-pattern-stroked-outline": case_232_pattern_stroked_outline,
+    "233-multiply-text": case_233_multiply_text,
+    "234-anisotropic-curve": case_234_anisotropic_curve,
+    "235-smask-then-none": case_235_smask_then_none,
+    "236-smasked-cover": case_236_smasked_cover,
+    "237-collinear-clip-window": case_237_collinear_clip_window,
+    "238-pentagram-clip": case_238_pentagram_clip,
+    "239-bowtie-fill-over-text": case_239_bowtie_fill_over_text,
+    "240-uneven-bowtie-fill": case_240_uneven_bowtie_fill,
+    "241-clipped-hole-cover": case_241_clipped_hole_cover,
+    "242-smasked-image-cover": case_242_smasked_image_cover,
+    "243-dash-gap-at-the-corner": case_243_dash_gap_at_the_corner,
+    "244-dash-through-the-corner": case_244_dash_through_the_corner,
+    "245-norotate-annot": case_245_norotate_annot,
+    "246-ap-state-without-as": case_246_ap_state_without_as,
+    "247-empty-stencil-over-text": case_247_empty_stencil_over_text,
+    "248-terminal-dash-cap": case_248_terminal_dash_cap,
+    "249-filled-and-stroked-faint": case_249_filled_and_stroked_faint,
+    "250-explicit-closing-point": case_250_explicit_closing_point,
+    "251-explicit-normal-blend": case_251_explicit_normal_blend,
+    "252-closed-dash-terminal-cap": case_252_closed_dash_terminal_cap,
+    "253-crossing-named-vertex": case_253_crossing_named_vertex,
+    "254-diamond-hole": case_254_diamond_hole,
+    "255-nested-island": case_255_nested_island,
+    "256-shape-in-an-L-notch": case_256_shape_in_an_L_notch,
+    "257-winding-island": case_257_winding_island,
+    "258-white-multiply-over-band": case_258_white_multiply_over_band,
+    "259-screen-image-over-text": case_259_screen_image_over_text,
+    "260-closed-dash-wrap-cap": case_260_closed_dash_wrap_cap,
+    "261-two-identical-diamonds": case_261_two_identical_diamonds,
+    "262-overlapping-subpaths": case_262_overlapping_subpaths,
+    "263-nearly-opaque-band": case_263_nearly_opaque_band,
+    "264-white-text-on-screen-image": case_264_white_text_on_screen_image,
+    "265-bar-across-a-U-notch": case_265_bar_across_a_U_notch,
+    "266-terminal-dash-dot": case_266_terminal_dash_dot,
+    "267-stroke-swallows-fill": case_267_stroke_swallows_fill,
+    "268-half-transparent-image": case_268_half_transparent_image,
+    "269-white-over-unknown-blend": case_269_white_over_unknown_blend,
+    "270-far-control-curve": case_270_far_control_curve,
+    "271-estimated-positions-clear": case_271_estimated_positions_clear,
+    "272-font-without-widths": case_272_font_without_widths,
+    "273-encrypt-direct-dictionary": case_273_encrypt_direct_dictionary,
+    "274-encrypt-indirect-reference": case_274_encrypt_indirect_reference,
+    "275-bar-with-named-crossings": case_275_bar_with_named_crossings,
+    "276-zero-length-dot": case_276_zero_length_dot,
+    "277-stretched-text-matrix": case_277_stretched_text_matrix,
+    "278-half-image-over-black-band": case_278_half_image_over_black_band,
 }
 
 

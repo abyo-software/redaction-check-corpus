@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.6",
+  "specVersion": "1.7",
   "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
@@ -1496,7 +1496,9 @@
           "pass",
           "review"
         ],
-        "checks": []
+        "checks": [
+          "A4"
+        ]
       },
       "source": "generated",
       "note": "spec 1.6 limits (A4 inks): a line painted with a tiling pattern that contrasts with the paper. An implementation that resolves the pattern finds it readable (pass); one that cannot must say so rather than stay silent (the editor: A4 review text-colour-not-read, noteKey fill-colour-unreadable). Written as #171 is - pass with review accepted - because acceptVerdicts may not add pass to a stricter verdict; the browser checker writes it as review with pass accepted."
@@ -1876,6 +1878,732 @@
       },
       "source": "generated",
       "note": "spec A4/A5 division (1.6): #224's guard - the same line at /ca 0.5, which differs from the band by 0.5 and is read without trouble."
+    },
+    {
+      "file": "226-ring-with-its-hole-filled.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.7, union policy): a black ring whose chamfered hole is filled by a second black shape of the same outline, over live text. The page is solid black there and every word extracts. A hole belongs to the cover that has it: taking every cover's holes out of the union of all covers let the ring's hole cancel the shape filling it. An implementation that unions shapes with holes exactly reports fail (the editor: each ring is its own strips, the filling shape its own cover); one that cannot must refuse - review - never the near-zero fraction."
+    },
+    {
+      "file": "227-soft-masked-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 inks (1.7, soft masks): text drawn under a fully transparent luminosity soft mask, with no cover anywhere. How much a soft mask lets through is per pixel - unknown, not zero - so the ink is not A5's paints-nothing and the line is not proven visible: A4 review (the editor: text-colour-not-read)."
+    },
+    {
+      "file": "228-rotated-form-bbox.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirements.formXObject (1.7): a Form XObject rotated 45 degrees with text inside it outside the form's own /BBox. A rotated box clips to a diamond; the box around that diamond adds four corners of page the form never reaches, and the text in one of them is clipped away (A4 outside-clip)."
+    },
+    {
+      "file": "229-degenerate-clip-path.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip pieces as regions (1.7): a clip path that doubles back on itself (0 0 m 100 0 l 0 0 l 0 100 l h), which encloses nothing, with text inside its bounding box. Four points over two x values and two y values do not make a rectangle; split where it touches itself, the path has no loop, so everything is clipped out (A4 outside-clip)."
+    },
+    {
+      "file": "230-cover-clipped-to-a-triangle.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate effective region (1.7): readable text outside a triangle that a black cover is clipped to, the cover drawn over it. The cover is the triangle; its bounding box adds the corners the text stands in."
+    },
+    {
+      "file": "231-dashed-corner.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a dashed stroke turning a corner with the gap on the corner, over an image blacked out only under the real dashes. A dash that merely starts at a vertex has a cap, not a join; no mitre wedge is modelled beyond the corner. A6 fails because the dash that does paint lies over untouched picture."
+    },
+    {
+      "file": "232-pattern-stroked-outline.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 inks (1.7): mode 2 text over a black band with a black fill and a pattern stroke. One ink of unread colour is enough to leave the answer open: judged on its black fill alone the line is black on black, while its outline is there to read. A4 review (text-colour-not-read)."
+    },
+    {
+      "file": "233-multiply-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 blend (1.7): cyan text in Multiply mode over red. PDF blends componentwise, so the result is black, plainly readable against the red; multiplying the two luminances gives a difference of 0.045 and calls the line invisible. Blending on luminance is exact only where the colours allow it (Normal always; Multiply and Screen when either side is grey; Darken and Lighten when both are); otherwise the ink is not read: A4 review (the editor), or pass by an implementation that blends in colour. Written as pass with review accepted (acceptVerdicts may not add pass); the browser checker writes review, pass accepted."
+    },
+    {
+      "file": "234-anisotropic-curve.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail",
+          "review"
+        ],
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec curve extent and candidate.strokedPath (1.7): a curve under 1000 0 0 100, the x scale ten times the y, stroked 0.2 wide over an image blacked out within 16 pt of the curve. Flattened to a tolerance on the page (measured against the largest stretch of the matrix, never a fixed count or the geometric mean) the chords follow the curve. But the pen is round in USER space: 0.2 units is 200 pt across on the page and 20 pt up, so the stroke lays black over picture well beyond the blacked band - PDFium renders a black band many times wider than the blacked one, over intact grey picture. A6 fails (the editor). The browser checker wrote pass with review accepted, taking the stroke as a thin line along the curve; the render does not bear that out, so the expectation is fail, review accepted for an implementation whose step cap stops short."
+    },
+    {
+      "file": "235-smask-then-none.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.opaque (1.7): a soft mask turned on, turned off again with /SMask /None, then an ordinary opaque black cover over live text. /SMask /None is no mask; reading the mask as still in force made the cover not opaque."
+    },
+    {
+      "file": "236-smasked-cover.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.weakCover (1.7): live text under a black cover drawn through a fully opaque luminosity soft mask - hidden on the page, extractable. How much a soft mask lets through is not read, so the cover is never a blackout (softMaskMeansNotOpaque), but it stays a cover: a weak one, A1 review (text-under-weak-cover). Dropping it from every cover list left the line unreported."
+    },
+    {
+      "file": "237-collinear-clip-window.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip pieces as regions (1.7): a black cover clipped to a convex window written with three collinear points along one edge, over live text. The inside of an edge chosen from the next vertex alone is undefined when that vertex is on the edge, and the window came out inside-out."
+    },
+    {
+      "file": "238-pentagram-clip.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip pieces as regions (1.7): a black cover clipped to a pentagram, text over one arm. A pentagram turns the same way at every point and goes round twice: convex means winding once, not turning one way. Clipping to the middle alone leaves the painted arms out of the cover. Split at its crossings, the pentagram's loops overlap one another and are a bound (fill rule by band); the editor fails it."
+    },
+    {
+      "file": "239-bowtie-fill-over-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band and candidate.weakCover (1.7): a black self-crossing fill (a bow-tie) over live text running through one lobe. The windings cancel, so the net area is nothing and the outline is not rectangular enough to be a candidate - a lobe of solid black over a line, reported as nothing. The editor splits the path into its loops and keeps a self-crossing fill as a weak cover (A1 review); an implementation that treats the lobes as covers reports fail."
+    },
+    {
+      "file": "240-uneven-bowtie-fill.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band and candidate.weakCover (1.7): #239 with lobes of different sizes, so the net area is not zero and a test on the area lets the shape through as exact; it then failed the rectangularity bar and was dropped from every cover list. Crossings are asked about directly; a self-crossing fill is a weak cover (A1 review) or, lobe by lobe, a cover (fail)."
+    },
+    {
+      "file": "241-clipped-hole-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail",
+          "review"
+        ],
+        "checks": [
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.7, holes): a cover with a triangular hole on its right, clipped to a strip on its left, over one large glyph. The clip excludes the hole, so the strip covers the glyph's left fifth outright (A2); taking the hole away without putting it through the same clip takes the whole cover away."
+    },
+    {
+      "file": "242-smasked-image-cover.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.weakCover (1.7): a black image drawn through a fully transparent luminosity soft mask over a visible heading, which reads perfectly. Measuring an image's darkness glyph by glyph and promoting a locally dark one to a blackout goes round the opacity question rather than through it. A soft-masked image is at most a weak cover: review (the editor) or pass. Written as pass with review accepted; the browser checker writes review, pass accepted."
+    },
+    {
+      "file": "243-dash-gap-at-the-corner.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a dashed stroke whose gap reaches a corner, so the next dash only starts there, with readable text just past it. Reading the dash state after the gap ends as 'on' at the corner invents a join over the text beside it."
+    },
+    {
+      "file": "244-dash-through-the-corner.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a dash running through a corner, a glyph just outside the join, projecting caps. A dash continuing through a vertex has a join and no caps; capping every fragment at both ends adds two squares of ink the page never has."
+    },
+    {
+      "file": "245-norotate-annot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec drawOrder.annotationFlags and NoRotate (1.7): a black Square annotation with /F 20 (Print, NoRotate) on a /Rotate 90 page, over a line of text. Viewers disagree where a NoRotate annotation lands: PDFium keeps it upright about its /Rect's upper-left corner, clear of the line; pdf.js turns it with the page and the bar contains the line's 1,615 ink pixels. The check asks whether an annotation covers text in any conforming view, so a NoRotate annotation on a turned page is measured at both placements (the editor) - A3 fail. The browser checker lists A1, which checksSemantics.annotationCovers allows."
+    },
+    {
+      "file": "246-ap-state-without-as.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec annotationAppearance, appearance states (1.7): a Square annotation whose /AP /N is a state dictionary with one black appearance under /Off and no /AS. Viewers disagree - PDFium picks /V, the parent's /V, then /Off and draws the box; another draws nothing. An appearance that cannot be resolved is reported, never ignored, and each implementation chooses its own state order: the editor follows PDFium (A3 fail), the browser checker reports a look (review)."
+    },
+    {
+      "file": "247-empty-stencil-over-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image, stencils (1.7): an 8x8 stencil with no bits set, drawn in black over a line of text. It paints nothing and the line reads perfectly; a mask that takes its darkness from the fill colour alone makes its whole rectangle a cover."
+    },
+    {
+      "file": "248-terminal-dash-cap.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a dashed stroke whose last dash ends where the path does, with a round cap, and a glyph just past that end. A dash with length still to run carries into the next segment - unless there is none, which is where an open path stops and the cap goes on."
+    },
+    {
+      "file": "249-filled-and-stroked-faint.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 inks (1.7): mode 2 text with fill AND stroke at a tenth of opacity each, on white paper. Neither ink reaches hiddenContrast alone, but where they overlap they are laid one over the other (fill, then stroke) and the page moves by 1 - 0.9 x 0.9 = 0.19: the outline is there to read (12.5% of the box carries ink, the darkest pixel 0.82). Judging the inks one at a time called a readable line hidden."
+    },
+    {
+      "file": "250-explicit-closing-point.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule (1.7): a correct redaction under a rectangle that writes its closing point explicitly before h. Testing for a self-crossing outline by index alone makes the first and closing edges, which meet at the start point, look like a crossing, and an ordinary rectangle becomes a shape that could not be established."
+    },
+    {
+      "file": "251-explicit-normal-blend.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.opaque (1.7): a black bar over live text with /BM /Normal stated explicitly. It changes nothing on the page. A blend mode is the PDF name; comparing a renderer's own name for it (pdf.js: source-over) against the PDF list matches neither, reads the paint as not opaque, and the plainest leak in the corpus goes unreported."
+    },
+    {
+      "file": "252-closed-dash-terminal-cap.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a closed dashed square whose phase starts in a gap, a glyph under the round cap where the dashes run out. A closed path's last dash runs into its first only if there was ink there to run into; here there was none, so it ends with a cap."
+    },
+    {
+      "file": "253-crossing-named-vertex.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band and candidate.weakCover (1.7): a self-crossing fill that names its crossing point as a vertex, over live text in one lobe. Forgiving every pair of edges that share a point (to allow a closing point written twice) also forgives the pair meeting AT the crossing; the cancelling lobes were then dropped. A loop that returns to one of its own vertices is split there like a crossing; the lobes are a weak cover (the editor: A1 review) or covers (fail)."
+    },
+    {
+      "file": "254-diamond-hole.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7, holes are polygons): a black rectangle with a diamond-shaped hole, text outside the diamond but inside its bounding box. The hole is taken out as its own polygon, never its box; and rectangularity is the subpath's own (the rectangle's), so the strips beside the diamond are not dropped for being triangles."
+    },
+    {
+      "file": "255-nested-island.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7): three nested rectangles filled with f*, text on the innermost. Under even-odd the island winds three times and is painted; asking only 'is anything around me' makes it a hole."
+    },
+    {
+      "file": "256-shape-in-an-L-notch.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7, nesting is a question about the shapes): an independent black rectangle in the notch of an L-shaped subpath, both filled in one f*, over live text. It is inside the L's bounding box and outside the L, so deciding enclosure from boxes makes it the L's hole."
+    },
+    {
+      "file": "257-winding-island.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7): three nested rectangles wound +, -, + and filled with f, text on the innermost. The fill rule is asked at a point of the innermost band against every subpath: the winding is 1 and it paints. Asking only whether any enclosing subpath winds the other way makes it a hole."
+    },
+    {
+      "file": "258-white-multiply-over-band.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background composition (1.7): a black band, an opaque WHITE rectangle over it under /BM /Multiply, then black text. Multiply keeps the darker, so the band stays black and the text cannot be read. A paint composes with what is behind it under its alpha and blend mode; taking the rectangle's own colour as the new background says black on white. The editor composes on luminance where the colours allow it (grey here) and fails it; an implementation that models only Normal reports a look."
+    },
+    {
+      "file": "259-screen-image-over-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.opaque blend classes (1.7): a black image over visible text under /BM /Screen. Screen keeps the lighter, so by the format a black image hides nothing (Screen and Lighten hide only by being light) - and pdf.js paints it black anyway. The editor follows the format (pass); an implementation that does not model the mode must look (review); one that follows its renderer may fail. Written as pass with review and fail accepted (acceptVerdicts may not add pass); the browser checker writes review."
+    },
+    {
+      "file": "260-closed-dash-wrap-cap.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, dashes): a closed dashed path whose ink runs through its closing point, with a readable glyph just outside that corner. The dash that arrives runs into the piece that left, so the corner has a join and that piece has no start cap; a projecting cap there lays a square of ink over the glyph."
+    },
+    {
+      "file": "261-two-identical-diamonds.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage, union policy (1.7): the same black diamond drawn twice over one glyph, each covering about a seventh of its box. The union is computed exactly (or refused: review); a cell estimate for shapes that are not axis-aligned counts the overlap twice where two shapes meet inside a cell, and one seventh becomes two."
+    },
+    {
+      "file": "262-overlapping-subpaths.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7, tangles are bounds): two rectangles that OVERLAP (not nest) filled in one f*, text where the second paints alone. Under even-odd the overlap cancels; one subpath has parts the rule answers differently, so no single point speaks for both. Such a tangle is an over-approximated BOUND - painted throughout, marked: a cover over-stated (the editor fails it), a background or clip relying on it floors at review."
+    },
+    {
+      "file": "263-nearly-opaque-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background composition (1.7): a black rectangle at /ca 0.9 over white paper, black text on top. The background keeps every paint that paints anything, composed by its alpha: the page there is a tenth of the way to white, and the text differs from it by 0.1, under hiddenContrast. Skipping paints below the opacity a BLACKOUT needs compares the text with white paper."
+    },
+    {
+      "file": "264-white-text-on-screen-image.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background composition (1.7): a black image under /BM /Screen on white paper, white text over it. Screen keeps the lighter, so the page stays white and the white text cannot be read; image pixels are composed with their alpha and blend mode like any paint, never put in place of the background. The editor fails it; pdf.js paints the image black, so an implementation following it looks."
+    },
+    {
+      "file": "265-bar-across-a-U-notch.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7, nesting needs no crossing): a bar whose ends sit in the arms of a U-shaped subpath, crossing its notch, both filled with f*. Every vertex of the bar is inside the U and the bar still crosses it: a concave shape can contain all of something's corners and none of its middle. Nested only when every vertex is inside and no edge crosses; the editor fails it."
+    },
+    {
+      "file": "266-terminal-dash-dot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, zero-length dashes): [5 5 0 5] on a ten-unit line under round caps. The pattern reaches its zero-length dash exactly at the end of the line, which paints a dot there; stopping when the line ran out never emitted it, and the ink over the glyph beside it went unmodelled."
+    },
+    {
+      "file": "267-stroke-swallows-fill.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 inks (1.7, a wide stroke swallows the fill): mode 2 text with a black fill and a 100 pt WHITE stroke. The stroke is painted after the fill and is wider than the glyph is tall, so it covers the fill entirely and nothing reaches the page (0% ink, darkest pixel 0.90). The gate is the stroke's width on the page against the glyph box's height; under it both inks show (the ordinary halo style) and the line passes."
+    },
+    {
+      "file": "268-half-transparent-image.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image, graded alpha (1.7): a black image with a constant /SMask of 128 over a visible heading: it renders mid-grey and the heading reads through it. Image alpha is graded, not transparent-or-solid at the halfway mark: a constant soft mask is a constant alpha of a half, no blackout (the editor reads it and passes). An implementation that cannot read a soft mask keeps it as a weak cover (review). Written as pass with review accepted; the browser checker writes review, pass accepted."
+    },
+    {
+      "file": "269-white-over-unknown-blend.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background composition (1.7): a black rectangle in a blend mode the browser checker does not model, an opaque white Normal rectangle over it, then white text. An opaque Normal paint replaces whatever is under it, known or not; keeping 'not known' turns a definite white-on-white finding into a look."
+    },
+    {
+      "file": "270-far-control-curve.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec curve extent (1.7): a 20 pt stroke along a curve whose control points are hundreds of thousands of units off the page, a glyph under where the real curve runs (the rendered box is solid black). Chords through such a curve peak a hundred points below it, so an extent built from sampled points never reaches the ink. A Bezier lies inside the convex hull of its control points: where flattening is capped or approximate, the paint's extent includes them. The editor flattens to a tolerance on the page within its cap and fails it."
+    },
+    {
+      "file": "271-estimated-positions-clear.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox, estimated advances (1.7): a line in a font with no /Widths that is neither embedded nor one of the standard fourteen, measured CLEAR of a black box on the same page. Where the file leaves a font's advances to the viewer, every position is that viewer's estimate: a cover decision that depends on advances the file does not supply floors at review (the editor: A1 review). An implementation with the real metrics, or one whose decision does not depend on the estimate, may pass. Written as pass with review accepted (acceptVerdicts may not add pass); the browser checker writes review, pass accepted."
+    },
+    {
+      "file": "272-font-without-widths.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail",
+          "review"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox, estimated advances (1.7): #271's companion with a longer line (Codex v107 round 8: twenty-point capitals at x = 80, a black box at x = 280), whose tail lies under the box by the substituted metrics. A definite finding stands; where the finding itself rests on the estimate, an implementation floors it at review."
+    },
+    {
+      "file": "273-encrypt-direct-dictionary.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A11 and encryption (1.7): RC4 encryption whose /Encrypt is written into the trailer as a direct dictionary rather than an indirect reference, with text under a black box. Whether a file is encrypted is read from the trailer in either form; a reader that recognises only the reference opens the file, never decrypts it, and every check passes over an empty page (Codex v107 round 8)."
+    },
+    {
+      "file": "274-encrypt-indirect-reference.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A11 and encryption (1.7): #273 with the usual indirect /Encrypt - the guard that both forms are read the same way."
+    },
+    {
+      "file": "275-bar-with-named-crossings.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec fill rule by band (1.7, tangles): #265's bar across the notch of a U with its intersections written in as vertices, both filled with f*. Every corner of the bar is then inside the U and no edge properly crosses one, so neither 'all corners inside' nor 'no proper crossing' tells nesting from a tangle. Containment and the fill rule are asked at every vertex AND at the midpoint of every edge: the bar's edges across the notch have midpoints outside the U, so the two are a tangle (a bound) however the path is written, never a hole. The editor fails it."
+    },
+    {
+      "file": "276-zero-length-dot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.7, zero-length segments): 200 500 m 200 500 l S with a 20 pt round cap - a dot over a glyph. Collapsing the repeated point leaves no segment to cap; a zero-length segment is a dot under round caps (and a square under projecting caps)."
+    },
+    {
+      "file": "277-stretched-text-matrix.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 inks (1.7, a wide stroke swallows the fill): mode 2 text under a text matrix stretching tenfold ALONG the line, a 5 pt white stroke over a black fill. The stroke's width is in user space - the text matrix does not widen it across the stems it outlines - so it is compared on the page with the glyph box's height as a 5 pt pen, never the matrix's largest stretch (50 pt): the fill is plainly there (13.9% of the box carries ink) and no glyph on the page is same-as-background. But at ten times the width the line runs off the page: 23 of its glyphs lie wholly outside the CropBox, which A4 reports as outside-cropbox, a review with no cover near. The browser checker wrote pass with A4 forbidden; the spec's CropBox rule says review."
+    },
+    {
+      "file": "278-half-image-over-black-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background composition (1.7): an opaque black band, a half-transparent black image over it, then black text - the band shows through and the text cannot be read. A pixel's colour and its alpha stay apart until they are composed over what is behind them; flattening the image over paper inside the sampler made it mid-grey, which then replaced the band. Only a paint of alpha >= 0.999, Normal or Compatible, with no soft mask replaces the background."
+    },
+    {
+      "file": "279-indexed-lab-picture-under-box.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "editorOnly": true,
+      "note": "spec units.luminance, Indexed (1.6, Codex v107 round 6; editor fixture, 279_indexed_lab.py): a checkerboard of an Indexed Lab palette - index 0 L* 0, index 1 lookup byte 255 - under a black box over the whole picture. A lookup byte spans its base component's range, L* 0..100 for Lab, so index 1 is L* 100, white: the picture under the box is intact (A6). Divided by 255 for every base, the white is L* 1, dark, the picture reads as blacked out and the file passes."
+    },
+    {
+      "file": "280-type3-d0-white-glyphs.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "editorOnly": true,
+      "note": "spec type3Glyphs, d0 colours (1.6, Codex v107 round 6; editor fixture, 280_type3_d0.py): a line in a Type 3 font whose glyph procedure begins with d0 and paints a white rectangle, shown with a black fill on white paper. A d0 glyph paints in its own colours, never the colour in force where it is shown: white on white, invisible and extractable (A4 same-as-background). Read in the caller's black, the line is visible and the file passes."
     }
   ]
 }
