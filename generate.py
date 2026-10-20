@@ -25,6 +25,7 @@ Usage: python3 generate.py [outdir]
 """
 
 import hashlib
+import math
 import os
 import re
 import struct
@@ -1702,6 +1703,282 @@ def case_146_invisible_text_under_a_name_bar() -> bytes:
     return pdf.build(root)
 
 
+def case_147_two_bands_over_every_glyph() -> bytes:
+    """Two bars across a line, one near the top of the glyph box and one
+    near the bottom, with a gap between them.
+
+    Every glyph is under BOTH, so the union of two overlapping covers is
+    what decides the threshold — and the union leaves a band showing, so
+    this is a partial cover and not a full one.
+
+    Found by mutation testing, not by reading: with one cover over a
+    glyph the coverage comes from a fast path, and nothing in the corpus
+    put a glyph under two covers at once with a partial total. The exact
+    union code could be broken outright — made to report everything as
+    fully covered — with every test still passing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 700, SECRET)
+        + b"0 0 0 rg\n68 705.6 290 5.6 re\nf\n"
+        + b"0 0 0 rg\n68 697.2 290 5.6 re\nf\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_148_rotated_bar_over_text() -> bytes:
+    """A black bar rotated twelve degrees over a line of text.
+
+    The first fixture whose transform is not a translate or a scale. Up
+    to here every cover was axis-aligned, so the matrix multiplication,
+    the point transform and the rotating-calipers rectangularity could
+    all be broken without a single test noticing — mutation testing
+    found all three untouched by the corpus at once.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    angle = 12 * math.pi / 180
+    cos = math.cos(angle)
+    sin = math.sin(angle)
+    body = (
+        text_op(72, 700, SECRET)
+        + f"q\n{cos:.6f} {sin:.6f} {-sin:.6f} {cos:.6f} 68 694 cm\n".encode("ascii")
+        + b"0 0 0 rg\n0 0 300 26 re\nf\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_149_rotated_image_cover() -> bytes:
+    """A black image, rotated, used as the cover over a line of text.
+
+    Deciding whether an image's own pixels are dark means mapping the
+    covered region back into the image, which needs the inverse of its
+    matrix. Every image in the corpus up to here was placed by a scale
+    and a translate, where the inverse's cross terms are zero — so that
+    arithmetic could be wrong in several ways with nothing noticing.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    img = black_block(pdf)
+    angle = 12 * math.pi / 180
+    cos = math.cos(angle)
+    sin = math.sin(angle)
+    body = (
+        text_op(72, 700, SECRET)
+        + (
+            f"q\n{300 * cos:.6f} {300 * sin:.6f} {-26 * sin:.6f} {26 * cos:.6f}"
+            f" 68 694 cm\n"
+        ).encode("ascii")
+        + b"/Im0 Do\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_150_triangular_clip() -> bytes:
+    """Text in the corner a triangular clip's bounding box adds.
+
+    The clip is the triangle (100,400) (400,400) (100,700); its box
+    reaches (400,700) and the text sits at (300,650), inside the box and
+    outside the triangle. Not one pixel of it is drawn. Standing a
+    piece's bounding box in for the piece calls it visible and reports
+    nothing — the spec asks for the region, and a rotated clip has the
+    same shape of gap.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"q\n100 400 m\n400 400 l\n100 700 l\nh\nW n\n"
+        + text_op(300, 650, SECRET)
+        + b"Q\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_151_triangular_clip_inside() -> bytes:
+    """The same triangular clip with the text well inside it.
+
+    The guard on #150: moving from boxes to regions must not start
+    reporting the text a clip actually keeps.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"q\n100 400 m\n400 400 l\n100 700 l\nh\nW n\n"
+        + text_op(110, 420, SECRET)
+        + b"Q\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_152_annotation_author_and_rich_text() -> bytes:
+    """A comment with an author (/T) and a rich-text body (/RC).
+
+    /T is a person's name, travelling with the file and never drawn on
+    the page, and /RC can say something /Contents does not. Reading only
+    /Contents leaves the author unmentioned.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Text/Rect[72 700 90 718]/F 4"
+        b"/T(Yamada Taro)/Subj(2026 disclosure draft)"
+        b"/RC(<?xml version=\"1.0\"?><body>remove the Suzuki paragraph</body>)"
+        b"/Contents(remove the Suzuki paragraph)>>"
+    )
+    root, _ = page(
+        pdf, text_op(72, 760, "Public part of the document"), font=f,
+        annots=f"/Annots[{annot} 0 R]",
+    )
+    return pdf.build(root)
+
+
+def _rotated_rect(cx: float, cy: float, w: float, h: float, degrees: float):
+    """The four corners of a rectangle rotated about its centre."""
+    angle = degrees * math.pi / 180
+    cos = math.cos(angle)
+    sin = math.sin(angle)
+    return [
+        (cx + dx * cos - dy * sin, cy + dx * sin + dy * cos)
+        for dx, dy in ((-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2))
+    ]
+
+
+def _rotated_clip(text_x: float, text_y: float, word: str) -> bytes:
+    """`word` drawn inside a clip that is one rotated rectangle."""
+    corners = _rotated_rect(250, 550, 260, 120, 35)
+    path = f"{corners[0][0]:.3f} {corners[0][1]:.3f} m\n" + "".join(
+        f"{x:.3f} {y:.3f} l\n" for x, y in corners[1:]
+    ) + "h\n"
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"q\n" + path.encode("ascii") + b"W n\n"
+        + text_op(int(text_x), int(text_y), word, size=10)
+        + b"Q\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_153_rotated_clip_corner() -> bytes:
+    """A name in the corner a rotated clip's bounding box adds.
+
+    The clip is one rectangle turned 35 degrees. Its box reaches well
+    past the rectangle's corners, and the name sits in that margin:
+    every pixel of it is clipped away, and the name comes straight out
+    of the file. A rotated clip needs no unusual path geometry — a
+    landscape scan does it — which is why this matters more than the
+    triangle of #150.
+    """
+    return _rotated_clip(116, 432, "Yamada")
+
+
+def case_154_rotated_clip_inside() -> bytes:
+    """The same rotated clip with the name at its centre.
+
+    The guard: testing the piece as a shape must not start reporting
+    what the clip keeps.
+    """
+    return _rotated_clip(230, 550, "Yamada")
+
+
+def _inline_image_cover(extra: str, hex_byte: str) -> bytes:
+    """A line of text with an inline image laid over it."""
+    pdf = Pdf()
+    f = helvetica(pdf)
+    inline = (
+        b"q\n290 0 0 26 68 694 cm\n"
+        + f"BI /W 4 /H 4 /CS /G /BPC 8 {extra}/F /AHx ID\n".encode("ascii")
+        + (hex_byte * 16).encode("ascii")
+        + b">\nEI\nQ\n"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET) + inline, font=f)
+    return pdf.build(root)
+
+
+def case_155_inline_image_decode_inverted() -> bytes:
+    """An inline image whose /Decode array makes 255 mean black.
+
+    The bytes say 255 and the page comes out solid black. An
+    implementation that reads the bytes without the decode array calls
+    it white and reports an opaque cover that is not dark, where the
+    text under it is blacked out and fully extractable.
+
+    The library applies /Decode itself and hands the decoded pixels over
+    in the operator, so the real bug this found here was larger: an
+    inline image has no object id to look up, so its pixels were never
+    read at all and EVERY inline cover — including a plain black bar —
+    was reported as not dark.
+    """
+    return _inline_image_cover("/D [1 0] ", "ff")
+
+
+def case_156_inline_image_white() -> bytes:
+    """The same inline image without the decode array, so 255 is white.
+
+    The guard: reading an inline image's pixels must not make every
+    inline cover dark. This one hides the text and is not dark, which
+    is a look.
+    """
+    return _inline_image_cover("", "ff")
+
+
+def case_157_text_field_value_off() -> bytes:
+    """A text field whose value is the word "Off".
+
+    /Off is the name a cleared check box holds, and excluding it
+    everywhere throws away a value somebody typed because of what a
+    button would have meant by it.
+    """
+    return _acroform_page(
+        b"<</Type/Annot/Subtype/Widget/FT/Tx/T(status)/Ff 0"
+        b"/Rect[72 700 300 720]/F 4/DA(/Helv 10 Tf 0 g)/V(Off)>>",
+        "157",
+    )
+
+
+def case_158_glyph_names_without_tounicode() -> bytes:
+    """Text in a font with /Differences glyph names and no /ToUnicode.
+
+    An extractor that maps the glyph names recovers the Greek letters;
+    one that gives up maps them to control characters, and a glyph
+    nobody could read must still count as covered. A black bar over
+    them is a failure either way.
+    """
+    pdf = Pdf()
+    encoding = pdf.add(
+        b"<</Type/Encoding/Differences[1/Alpha/Beta/Gamma/Delta/Epsilon]>>"
+    )
+    font = pdf.add(
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding "
+        + str(encoding).encode("ascii")
+        + b" 0 R>>"
+    )
+    body = (
+        b"BT\n0 0 0 rg\n/F1 24 Tf\n1 0 0 1 80 700 Tm\n<0102030405> Tj\nET\n"
+        + black_rect(76, 694, 120, 34)
+    )
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {font} 0 R>>>>/Contents {contents} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    root = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    return pdf.build(root)
+
+
 CASES = {
     "01-path-over-text": case_01_path_over_text,
     "02-image-over-text": case_02_image_over_text,
@@ -1773,6 +2050,18 @@ CASES = {
     "144-many-clip-pieces": case_144_many_clip_pieces,
     "145-annotation-over-a-name": case_145_annotation_over_a_name,
     "146-invisible-text-under-a-name-bar": case_146_invisible_text_under_a_name_bar,
+    "147-two-bands-over-every-glyph": case_147_two_bands_over_every_glyph,
+    "148-rotated-bar-over-text": case_148_rotated_bar_over_text,
+    "149-rotated-image-cover": case_149_rotated_image_cover,
+    "150-triangular-clip": case_150_triangular_clip,
+    "151-triangular-clip-inside": case_151_triangular_clip_inside,
+    "152-annotation-author-and-rich-text": case_152_annotation_author_and_rich_text,
+    "153-rotated-clip-corner": case_153_rotated_clip_corner,
+    "154-rotated-clip-inside": case_154_rotated_clip_inside,
+    "155-inline-image-decode-inverted": case_155_inline_image_decode_inverted,
+    "156-inline-image-white": case_156_inline_image_white,
+    "157-text-field-value-off": case_157_text_field_value_off,
+    "158-glyph-names-without-tounicode": case_158_glyph_names_without_tounicode,
 }
 
 

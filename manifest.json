@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.4",
+  "specVersion": "1.5",
   "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
@@ -926,6 +926,143 @@
       },
       "source": "generated",
       "note": "spec A5 and recovered span (1.4): the sentence of #145 drawn in render mode 3 (invisible), a black bar over the one name. The invisible name under the bar is A5; the recovered text is the covered span, not the line"
+    },
+    {
+      "file": "147-two-bands-over-every-glyph.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A2"
+        ],
+        "mustNotFlag": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.4): two black bars across a line, one over the upper part of the glyph boxes and one over the lower part, with a band between them uncovered. Every glyph is under both bars, so the union of two overlapping covers decides the threshold, and the union leaves the band showing: a partial cover (A2), not a full one (A1). Found by mutation testing: with one cover over a glyph the coverage came from a fast path, and no earlier file put a glyph under two covers whose union is partial, so a union that reported everything as fully covered passed every case"
+    },
+    {
+      "file": "148-rotated-bar-over-text.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.rectangularity and drawOrder (1.5): a black bar drawn under a matrix rotated twelve degrees, over a line of text. The start of the line is wholly under the bar (A1); the bar climbs away from the line, so glyphs further along are partly under it or not at all. The first file whose transform is neither a translation nor a scale: before it, the matrix product, the point transform and the rectangularity of a rotated rectangle could each be wrong with every case passing"
+    },
+    {
+      "file": "149-rotated-image-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate and imageDecoding (1.5): a black image placed by a matrix rotated twelve degrees, over a line of text, as the cover. Whether an image's pixels are dark under a glyph is decided by mapping the covered region back into the image through the inverse of its matrix. Every earlier image was placed by a scale and a translation, where the inverse has no cross terms, so the inverse could be wrong with every case passing"
+    },
+    {
+      "file": "150-triangular-clip.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip pieces as regions (1.5, now MUST): a triangular clip, and a line of text inside the clip's bounding box but outside the triangle. Not one pixel of it is drawn (A4 outside-clip). An implementation that stands a piece's bounding box in for the piece calls the glyphs in the box's corner visible. The line also runs past the box's right edge (x 400), so an implementation that tests each glyph reports A4 for the glyphs beyond it either way: for such an implementation #153 is the file that tells the region from the box (checked here: with clip pieces replaced by their bounding boxes, #150 still raises A4 and #153 passes)"
+    },
+    {
+      "file": "151-triangular-clip-inside.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "the guard on #150: the same triangular clip with the text well inside it. Testing the piece as a region must not report text the clip keeps"
+    },
+    {
+      "file": "152-annotation-author-and-rich-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 annotationText and annotationAuthors (1.5): a comment whose author (/T) is a person's name, with a rich-text body (/RC) and a subject (/Subj). None of them is drawn on the page; all travel with the file. /Subj is OPTIONAL to list: pdf.js does not expose it, so an implementation built on it cannot. An implementation that does list it conforms"
+    },
+    {
+      "file": "153-rotated-clip-corner.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip pieces as regions (1.5): a rectangular clip turned 35 degrees, and a name in a corner of the bounding box the rotation adds. Every pixel of it is clipped away (A4 outside-clip). A landscape scan placed by a rotation makes this clip; no unusual path is needed. A piece read as its bounding box passes the file"
+    },
+    {
+      "file": "154-rotated-clip-inside.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "the guard on #153: the same rotated clip with the name at its centre"
+    },
+    {
+      "file": "155-inline-image-decode-inverted.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec imageDecoding (1.5): an inline image whose /Decode [1 0] makes the sample 255 black, over a line of text: the cover is solid black (A1). Read without its decode array it is white, and a cover that is not dark is reported instead; an inline image has no object number, so a reader that looks pixels up by object never reads it at all"
+    },
+    {
+      "file": "156-inline-image-white.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "the guard on #155: the same inline image without /Decode, which really is white. An opaque cover that is not dark is a review (candidate.nonDarkOpaqueCover), not a fail: reading an inline image's pixels must not make every inline cover dark"
+    },
+    {
+      "file": "157-text-field-value-off.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 formValues (1.5): a text field whose /V is the string (Off). The NAME /Off on a button field is the unset state of a check box or radio button and is not a value; anything else - a string, or any value of a field that is not a button - is something somebody typed, and is listed"
+    },
+    {
+      "file": "158-glyph-names-without-tounicode.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox (1.5): text in a font with /Differences glyph names and no /ToUnicode, under a black bar. An extractor that maps the names recovers the letters, one that cannot maps them to nothing usable; either way the glyphs are drawn and covered (A1). A glyph never drops out of coverage because its character is unknown or unmappable; only a glyph that maps to white space may be ignored"
     }
   ]
 }
