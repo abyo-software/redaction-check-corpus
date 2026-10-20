@@ -1,7 +1,30 @@
 {
-  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value or rule bumps specVersion. Version 1 agreed 2026-10-20; version 1.1 agreed 2026-10-20 after the browser checker found false passes (see changes and requirements). See docs/design/disclosure-redaction/design.md sections 4.2.1 and 8.",
-  "specVersion": "1.1",
+  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value or rule bumps specVersion. Version 1 agreed 2026-10-20; version 1.1 agreed 2026-10-20 after the browser checker found false passes (see changes and requirements); version 1.2 agreed 2026-10-20 (annotation flags, word-boundary visible text, A7 recovered words, noteKey earlier-revision-not-read, detail as a code, declared evidence values, dictionary-drawn annotations; #115-#122); version 1.3 agreed 2026-10-20 (closed subpaths measured separately, strokes as per-segment ribbons, A3 takes any dark cover of an annotation, a clip kept as its pieces, every emitted code reached; #123-#134). See docs/design/disclosure-redaction/design.md sections 4.2.1 and 8.",
+  "specVersion": "1.3",
   "changes": {
+    "1.3": [
+      "candidate.rectangularity / candidate.region: a filled path is measured one closed subpath at a time. Each subpath is its own painted region with its own rectangularity, so two bars painted by one fill operator are two covers (#123), not one hull about 5% filled. A subpath nested inside another is a hole when the fill rule leaves its inside unpainted (even-odd, or nonzero with the windings cancelling): the outer then covers only the ring around the hole, never the hole. Subpaths that overlap without nesting are each taken as painted throughout (an over-estimate, the safe direction for A1). Subpaths that touch and together are rectangular may be measured as one region, so a glyph on the seam between two abutting bars is not split between them",
+      "candidate.strokedPath: a stroke paints a ribbon along each segment of each subpath (the closing segment included for a closed subpath), each the segment grown by half the line width, never the area the path encloses. A frame drawn after text is not a cover of the text inside it (#124), and a frame drawn before text is not the background that text is read against (A4, #125). A fill-and-stroke (B, B*, b, b*) is its fill regions and then its ribbons, so a white box with a black border over text is still an opaque non-dark cover (#126)",
+      "A3: every cover an annotation's appearance paints is considered, not the first in draw order. The annotation fails when any dark cover covers text with coveredFraction >= coverPartialMin; otherwise it is a review when a non-dark opaque cover covers text with coveredFraction >= coverFail. Still one finding per annotation (#127)",
+      "clip: W and W* mark the path that the NEXT painting operator (n, f, S, ...) ends; that path, not an earlier one, becomes the clip when it is painted (ISO 32000-1 8.5.4). An implementation that applies W to the path before it applies no clip at all (#128)",
+      "clip: a clip is kept as its pieces - the regions its closed subpaths enclose under W's fill rule (nonzero for W, even-odd for W*), each measured as candidate.rectangularity measures a fill - intersected piece by piece with the clip in force. A glyph is outside the clip (A4) when its box meets none of the pieces: the hull of two clip rectangles covers the gap between them and would call text in the gap visible (#129); text inside a piece is not reported (#130)",
+      "clip: a paint's effective region is the paint intersected with each clip piece, so a bar clipped to half a name covers half of it, an A2 and not an A1 (#131). An implementation may trim covers by the clip's hull instead (an over-estimate of the cover, the safe direction for A1/A2), but MUST test glyph visibility against the pieces",
+      "reachability: every finding detail, noteKey and checksSkipped reason an implementation can emit is reached by at least one corpus file or by a named rule test, or is declared unreached with a written reason. #132 (an undecodable image as the cover, A1 checksSkipped image-pixels-not-readable), #133 (a dark bar over an undecodable image, A6) and #134 (#111 with its /Prev broken too) were added because no file reached those branches",
+      "A9 documentInfo on a repaired file: when the document opens only through a repair (a broken /Prev), the document information the LAST trailer names is read from the bytes as well; a repair that takes another trailer must not lose it (#134)"
+    ],
+    "1.2": [
+      "drawOrder.annotationFlags: Hidden (/F bit 2) is not drawn and is not a cover (#116); NoView (bit 6) is still a cover, because it covers on paper; Print (bit 3) clear is still a cover, because it covers on screen; /Redact is A3 whatever its flags",
+      "visibleText: one normative visible-text filter for A7 and A8. Words are matched on word boundaries against the visible text with its white space kept (a glyph gap or a line change separates text); a hidden 'Li' is not visible inside a printed 'Click' or 'Lions' (#117). The white-space-insensitive comparison of 1.1 remains only as a fallback for a string of several words broken by a re-flow (#114), never for a single word",
+      "A7: words are the letter-or-digit runs of each white-space-separated string; only hidden words are recovered, and a string all of whose words are hidden is recovered as written, so a date stays one string (#115)",
+      "A7: outcome 3 (and the chain floor's finding) carries noteKey earlier-revision-not-read",
+      "finding.noteKey: earlier-revision-not-read; read-from-file-bytes names A7 as well as A8",
+      "finding.detail: a code matching ^[a-z][a-zA-Z0-9-]*$ (page-not-examined: the failure name), never document text; string evidence values are codes or standard PDF names, and an annotation subtype outside the standard list is written as other. The saved report is byte-identical whether or not findings carry recovered text",
+      "finding.detail / finding.evidence: the failure name of a page-not-examined finding (a library's error type name) may be carried in detail or in evidence.failure; both conform, and a comparison of two reports never depends on which",
+      "finding.evidence: every string evidence key has declared values, a closed set of codes and standard PDF names or the kind failure name; a value outside its key's declaration, or a string key with no declaration, is non-conformant. checksSkipped detail likewise: an image filter ISO 32000 does not define is written as other, never the document's spelling",
+      "visibleText.lineChange: a separation taken from an extractor must survive a line change (#118, a word at the start of a line joined to the line before it)",
+      "drawOrder.annotationFlags: a Hidden /Redact is still A3 (#119)",
+      "annotationAppearance.withoutAppearance: only Square, Circle and Highlight are drawn from the dictionary; any other subtype with no usable appearance, standard (#122) or unknown (#121), draws nothing and is not a cover. An unknown subtype WITH an appearance is judged by what it paints, like any other (#120)"
+    ],
     "1.1": [
       "requirements: four normative requirements (formXObject, annotationAppearance, shading, strokeState), each with a corpus fixture (#99-#103); an implementation that misses one passes a leaking file",
       "checksSemantics: implementations agree on the VERDICT; expect.checks is a required subset, extra checks are allowed except those in mustNotFlag",
@@ -60,7 +83,8 @@
     ]
   },
   "drawOrder": {
-    "rule": "Page content stream(s) in order, with every Form XObject expanded at its Do (recursively, including nested forms, patterns are NOT expanded) under requirements.formXObject, then each annotation's normal appearance (/AP /N, honouring /F hidden and /OC off) in /Annots order, placed under requirements.annotationAppearance. Annotations are always above page content.",
+    "rule": "Page content stream(s) in order, with every Form XObject expanded at its Do (recursively, including nested forms, patterns are NOT expanded) under requirements.formXObject, then each annotation's normal appearance (/AP /N, honouring /F under annotationFlags and /OC off) in /Annots order, placed under requirements.annotationAppearance. Annotations are always above page content.",
+    "annotationFlags": "v1.2. The check asks whether an annotation covers text on screen OR on paper. Hidden (/F bit 2, value 2): drawn nowhere, so it is not a cover and raises no A1, A2 or A3 (#116); Hidden wins over every other flag. NoView (bit 6, value 32): not shown on screen but printed, so it is still a cover - a printed copy shows the box while the text under it can be extracted. Print (bit 3, value 4) clear: shown on screen but not printed, so it is still a cover. Invisible (bit 1) concerns only annotation types a viewer does not know and is not read. A /Redact annotation is reported by A3 whatever its flags (an unapplied redaction mark, regardless of what it draws).",
     "textBeforeCandidateOnly": true
   },
   "requirements": {
@@ -71,7 +95,7 @@
     },
     "annotationAppearance": {
       "rule": "An annotation's appearance stream is fitted to /Rect per PDF 32000-1 12.5.5 (Algorithm 8.1): transform the appearance /BBox by its /Matrix, take the bounding box of the result, and map that box onto /Rect (scale and translate); the appearance's content is drawn through /Matrix then that mapping, clipped to /Rect. The colour comes from the appearance stream, not from /C or /IC.",
-      "withoutAppearance": "An annotation with no usable /AP /N is drawn from /IC, else /C (units.luminance for the array): a Square fills its /Rect, a Circle the ellipse inscribed in /Rect, a Highlight its /QuadPoints quads (none -> nothing drawn) with blend mode Multiply; /CA is the alpha. No colour -> nothing drawn. /Redact is A3 regardless of what it draws.",
+      "withoutAppearance": "An annotation with no usable /AP /N is drawn from /IC, else /C (units.luminance for the array): a Square fills its /Rect, a Circle the ellipse inscribed in /Rect, a Highlight its /QuadPoints quads (none -> nothing drawn) with blend mode Multiply; /CA is the alpha. No colour -> nothing drawn. /Redact is A3 regardless of what it draws. v1.2: ONLY these three subtypes are drawn from the dictionary, because only for them does a viewer synthesise an appearance from /IC or /C; an annotation of any other subtype with no usable /AP /N draws nothing and is not a cover, whether its subtype is a standard one (a Stamp with a black /IC, #122) or one ISO 32000 does not define (#121). An annotation of an unknown subtype that HAS an appearance is drawn like any other and judged by what it paints (A3, #120).",
       "fixture": "100-annotation-scaled-appearance.pdf"
     },
     "shading": {
@@ -87,6 +111,13 @@
         "102-white-stroke-over-text.pdf"
       ]
     }
+  },
+  "visibleText": {
+    "rule": "v1.2. Whether a string is shown in the current document (A7's words, A8's replacement texts). The visible text is the extracted text of the page (A8) or of every page (A7) with white space kept, and with a separator between two consecutive glyphs that are not adjacent: on another line, or with a gap along the line wider than wordGapEm times the font size (a word gap written as a TJ adjustment or a move instead of a space). A word is shown when it occurs in the visible text on word boundaries: the character before the match and the character after it are each absent, not a letter or digit, or (with the neighbouring matched character) a CJK ideograph or kana, scripts written without spaces. A word is never shown by the inside of a longer word: a hidden 'Li' is not shown by a printed 'Click' or 'Lions' (#117).",
+    "multiWord": "A string of several words is shown when it occurs, each run of white space matching any run of white space, on word boundaries; failing that, when its characters without white space occur in the visible text without white space, and the match begins and ends on word boundaries of the visible text (a re-flow that split the string across lines or runs, #114). This white-space-insensitive fallback is NEVER used for a single word: a word split by a separator is reported, which is a false alarm at worst, whereas joining words would let a short name hide in a longer one.",
+    "lineChange": "an implementation that takes word separation from its extractor must satisfy itself that the separation survives a line change; consulting both the run-joined and run-separated forms is one way.",
+    "lineChangeFixture": "118-line-initial-word-unchanged.pdf",
+    "wordGapEm": 0.15
   },
   "type3Glyphs": {
     "rule": "A Type 3 font's glyphs are drawn by its /CharProcs procedures, which may paint covers. Expanding them is RECOMMENDED: walk the procedure of each shown glyph through /FontMatrix, then the text rendering matrix ([Tfs*Th 0 0 Tfs 0 Trise] x Tm), then the CTM, using the font's /Resources (else the page's). After d1 the glyph is a stencil: its colour operators are ignored and it paints in the fill colour in force where the glyph is shown; after d0 the procedure sets its own colours. A glyph's own drawing never covers that glyph, nor is it the background A4 reads that glyph against.",
@@ -123,11 +154,11 @@
     },
     "rectangularity": {
       "minAreaToOrientedBBox": 0.9,
-      "$comment": "Oriented (minimum-area) bounding box, so rotated rectangles qualify."
+      "$comment": "Oriented (minimum-area) bounding box, so rotated rectangles qualify. Measured per closed subpath (1.3); a nested subpath the fill rule leaves unpainted is a hole, not part of the outer's cover"
     },
     "strokedPath": {
       "minLineWidthPt": 4.0,
-      "$comment": "marker-style blackouts drawn with a thick stroke; region = stroke outline"
+      "$comment": "marker-style blackouts drawn with a thick stroke; region = a ribbon per segment (1.3), each segment grown by half the line width, closing segment included; never the area the path encloses"
     },
     "image": {
       "darkPixelLuminance": 0.25,
@@ -159,7 +190,7 @@
     ],
     "verdictWhenUndecodable": "review",
     "checksSkippedReason": "image-pixels-not-readable",
-    "$comment": "detail is the terminal filter name without the slash, e.g. DCTDecode (v1 put it in the reason as image-codec-not-decodable:<Filter>). Such an image is also not a cover candidate (its darkness is unknown). Corpus cases whose verdict depends on this carry expect.acceptVerdicts."
+    "$comment": "detail is the terminal filter name without the slash, e.g. DCTDecode (v1 put it in the reason as image-codec-not-decodable:<Filter>). v1.2: a filter name ISO 32000 does not define (Table 6, or an inline-image abbreviation of one, Table 92) is written as other, never the document's spelling; unreadable when the filter chain cannot be read. Such an image is also not a cover candidate (its darkness is unknown). Corpus cases whose verdict depends on this carry expect.acceptVerdicts."
   },
   "checks": [
     {
@@ -182,7 +213,7 @@
       "defaultVerdict": "fail",
       "rule": "Any /Redact annotation (regardless of what is under it). Otherwise an annotation appearance (requirements.annotationAppearance) that covers earlier text, graded by the ladder.",
       "ladder": {
-        "fail": "/Redact; or an opaque DARK appearance (candidate.dark, any subtype, /Highlight included) covering text with coveredFraction >= coverPartialMin",
+        "fail": "/Redact; or an opaque DARK appearance (candidate.dark, any subtype, /Highlight included) covering text with coveredFraction >= coverPartialMin. Every cover of the annotation's appearance is considered (1.3): a dark one anywhere in it decides, even after a non-dark one drawn first",
         "review": "an opaque appearance that is NOT dark covering text with coveredFraction >= coverFail (nonDarkOpaqueCover applied to annotations)",
         "none": "a /Highlight whose appearance is not dark: a highlighter hides nothing"
       }
@@ -217,7 +248,7 @@
       "id": "A7",
       "title": "増分更新の旧版に別の内容",
       "defaultVerdict": "fail",
-      "rule": "list the earlier revisions (revisionDiscovery); for each, extract its text per page. Three outcomes: (1) legible text recovered that the current document does not show: fail; (2) legible text recovered and ALL of it shown in the current document (an ordinary incremental save): nothing is reported; (3) an earlier revision exists and nothing legible could be read from it: review with checksSkipped revisions-not-readable, detail revision. Outcome 2 requires that something was read: 'every recovered word is visible' is vacuously true of an empty list, which is outcome 3. Text is compared as words (letters or digits), each searched for in the current document's text with white space removed. The visible-text filter: the comparison ignores white space on both sides, so text that only re-flowed between two saves is visible (#114).",
+      "rule": "list the earlier revisions (revisionDiscovery); for each, extract its text per page. Three outcomes: (1) legible text recovered that the current document does not show: fail; (2) legible text recovered and ALL of it shown in the current document (an ordinary incremental save): nothing is reported; (3) an earlier revision exists and nothing legible could be read from it: review with checksSkipped revisions-not-readable, detail revision, and noteKey earlier-revision-not-read on the finding. Outcome 2 requires that something was read: 'every recovered word is visible' is vacuously true of an empty list, which is outcome 3. Text is compared as words (v1.2): the revision's text is split at white space into strings, each string into words (maximal runs of letters or digits), and each word is searched for under visibleText (word boundaries; a single word gets no white-space-insensitive fallback). Recovered text lists only the hidden words: a string all of whose words are hidden is recovered as written (a date such as 2001-02-03 stays one string, not three numbers); of a string with some words visible, only its hidden words. One name removed from a sentence is recovered alone, not with the words still printed around it (#115). Text that only re-flowed between two saves is visible (#114).",
       "revisionDiscovery": "Walk startxref and each /Prev (a /Prev pointing forward is a linearized file's first-page section, not a revision). Then count the %%EOF markers: the chain accounts for one per revision, plus one extra for a linearized file (a /Linearized dictionary in the first 1024 bytes). A surplus, or a chain that cannot be followed, means earlier bytes the chain does not point at (#108): the file prefix ending at each %%EOF marker before the last is read as an earlier revision too. Such a prefix may be the document itself (a stray marker, #109), which outcome 2 then reports as nothing. A chain that cannot be followed, or a marker prefix that does not open, adds revisions-not-readable with detail chain (verdicts.reviewFloor).",
       "compressedRevisions": "Whether an implementation can decompress an earlier revision is a capability: one that reads earlier revisions through a full parser decompresses them and reports nothing when all their text is visible (#111); one that cannot reports outcome 3 (review, revisions-not-readable/revision). A7 review means an earlier revision exists and could not be read, not that it is compressed.",
       "onOpenFailure": "When the file cannot be opened (open-failed), A7 still runs: earlier revisions are found and read as usual, but with no current page the visible-text filter cannot run, so text recovered from an earlier revision is reported as REVIEW, never fail, with the recovered text shown, noteKey read-from-file-bytes and evidence source fileBytes. Outcome 3 (nothing legible read) is reported as usual."
@@ -226,7 +257,7 @@
       "id": "A8",
       "title": "構造ツリーの /ActualText・/Alt に黒塗り部分の文字",
       "defaultVerdict": "fail",
-      "rule": "/ActualText, /Alt or /E on a struct element or BDC property list whose content (MCIDs, or the element's page area) intersects a candidate, OR whose string is not found in the page's extractable text while the page has candidates; else listed under A9 as review. Whether the string is in the page's text is decided by the same visible-text filter as A7: the comparison ignores white space on both sides",
+      "rule": "/ActualText, /Alt or /E on a struct element or BDC property list whose content (MCIDs, or the element's page area) intersects a candidate, OR whose string is not found in the page's extractable text while the page has candidates; else listed under A9 as review. Whether the string is in the page's text is decided by visibleText, as for A7 (v1.2: word boundaries; the white-space-insensitive fallback only for a string of several words)",
       "onOpenFailure": "When the file cannot be opened (reason open-failed; never for an encrypted file, which is A11's), A8 still runs, from the file's bytes: every /ActualText, /Alt and /E string found in the objects - literal or hex, PDFDocEncoding or UTF-16BE (or UTF-8) with its byte order mark, a direct string or one an indirect reference names, and inside Flate-compressed object streams and content streams where they can be decompressed - is reported as an A8 finding with verdict REVIEW and noteKey read-from-file-bytes, never fail: with no page to compare against, a tagged string over a blackout cannot be told from a caption. These are not listed again under A9. An implementation that repairs the file and opens it (for example by rebuilding the cross-reference table, or by taking the file's only catalog when the trailer's /Root names a missing object) examines the repaired document like any other, so A8 may be fail there (#112)."
     },
     {
@@ -314,20 +345,21 @@
       },
       "detail": {
         "type": "string",
-        "$comment": "a short machine-readable code, never prose and never document text"
+        "$comment": "a short machine-readable code, never prose and never document text (no name, title, author, file name or recovered word). v1.2: it matches ^[a-z][a-zA-Z0-9-]*$, with one exception: the detail of a page-not-examined finding is the failure name (a library's error type name such as InvalidOperationException, ^[A-Za-z][A-Za-z0-9]*$). The failure name may instead be carried in evidence.failure (detail then a code); both conform, and a comparison never depends on which. Added after an implementation was found writing author names here. The saved report (JSON and text) must be byte-identical whether or not the findings carry recovered text"
       },
       "evidence": {
         "type": "object",
-        "$comment": "machine-comparable facts: coveredFraction, candidateSource, luminance, revisionIndex, ..."
+        "$comment": "machine-comparable facts: coveredFraction, candidateSource, luminance, revisionIndex, ... Values are numbers, booleans or codes; a string value is a code or a standard PDF name (an annotation subtype, a replacement-text key), never document text (v1.2). Each string key has DECLARED values: a closed set (subtype: the ISO 32000-2 Table 171 names or other; colourSpace: the colour-space families or a fixed code such as unresolved or other; key: ActualText, Alt or E; ...) or the kind failure name (evidence.failure, ^[A-Za-z][A-Za-z0-9]*$, a library's error type name). A name the document chose never passes through: a value outside the standard list is written as other. A string key an implementation has not declared is non-conformant; an implementation is expected to hold its declarations in one place and test every saved report against them"
       },
       "noteKey": {
         "enum": [
           "type3-not-inspected",
           "fill-colour-unreadable",
           "page-not-examined",
-          "read-from-file-bytes"
+          "read-from-file-bytes",
+          "earlier-revision-not-read"
         ],
-        "$comment": "v1.1: a fixed CODE, never prose, present only when the finding says something could not be examined (type3-not-inspected: a Type 3 glyph's drawing; fill-colour-unreadable: a shading or pattern cover; page-not-examined: an internal failure while examining the page, paired with checksSkipped check-failed, detail = the failure name; read-from-file-bytes: an A8 replacement text read from the bytes of a file that could not be opened, which could not be compared with any page - A8 onOpenFailure). See verdicts.wordingRules and verdicts.reviewFloor."
+        "$comment": "v1.1: a fixed CODE, never prose, present only when the finding says something could not be examined (type3-not-inspected: a Type 3 glyph's drawing; fill-colour-unreadable: a shading or pattern cover; page-not-examined: an internal failure while examining the page, paired with checksSkipped check-failed, detail = the failure name; read-from-file-bytes: text read from the bytes of a file that could not be opened, which could not be compared with any page - an A7 earlier-revision text (A7 onOpenFailure) or an A8 replacement text (A8 onOpenFailure); earlier-revision-not-read (v1.2): A7 outcome 3, an earlier revision exists and nothing legible could be read from it, paired with checksSkipped revisions-not-readable, and the A7 finding of the chain floor when nothing at all could be read from the earlier bytes). See verdicts.wordingRules and verdicts.reviewFloor."
       }
     }
   },

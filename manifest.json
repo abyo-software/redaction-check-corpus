@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.1",
+  "specVersion": "1.3",
   "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
@@ -548,6 +548,246 @@
       },
       "source": "generated",
       "note": "the same sentence written as one run, then re-flowed across a line break into two runs by an incremental save: every word of the earlier revision is printed on the page, but the earlier string's spaces and the extracted text's spacing differ, so the visible-text comparison has to ignore white space on both sides (spec A7 visibleText); a literal comparison reports a clean file as hiding its own sentence"
+    },
+    {
+      "file": "115-one-name-removed-from-a-sentence.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 words: the realistic redaction, one surname taken out of a sentence by an incremental save. The earlier revision's sentence is five words and four of them are still printed on the page, so A7 must recover the surname alone; an implementation comparing whole strings quotes the four printed words as text recovered from an earlier version"
+    },
+    {
+      "file": "116-hidden-annotation-over-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec drawOrder annotationFlags: a black Square annotation over live text, marked Hidden (/F bit 2). A hidden annotation is drawn neither on screen nor on paper, so it covers nothing and the text is in plain view; an implementation that reads /Annots without the flags reports a cover and quotes the printed text as recovered from under it"
+    },
+    {
+      "file": "117-short-name-inside-a-longer-word.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec visibleText word boundaries: the earlier revision holds a two-letter surname and the current page prints a longer word that begins with the same two letters. Substring matching (with or without white space) calls the name visible and reports nothing, a false clean; matching on word boundaries reports it. A single word never gets the white-space-insensitive fallback, which is kept for a re-flowed multi-word string (#114)"
+    },
+    {
+      "file": "118-line-initial-word-unchanged.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ],
+        "mustNotFlag": [
+          "A7",
+          "A8"
+        ]
+      },
+      "source": "generated",
+      "note": "spec visibleText line change: nothing was redacted, an incremental save changed only the document information (A9), and the earlier revision's text is all still printed. One word stands at the start of the second line; an implementation that joins the extractor's runs end to end puts the first line's last letter directly before it, finds no word boundary, and reports a printed word as recovered from an earlier version. The mirror image of a word the extractor splits across two runs, so both joins (runs end to end, and runs separated) have to be consulted"
+    },
+    {
+      "file": "119-hidden-redact-annotation.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec drawOrder annotationFlags: an unapplied /Redact annotation over live text, marked Hidden (/F bit 2). An unapplied redaction mark is the problem whether or not it is drawn, so Hidden does not excuse it, where for every other subtype Hidden means nothing is covered (#116); an implementation that applies the Hidden flag before the /Redact rule drops the mark from the report"
+    },
+    {
+      "file": "120-vendor-subtype-with-appearance.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A3 ladder (any subtype) and checksSemantics annotationCovers: an annotation of a subtype ISO 32000 does not define, whose /AP paints an opaque black box over live text. What is painted decides, not what the annotation calls itself: the cover is A3 like any dark appearance (an implementation may also raise A1 for it). The saved evidence names the subtype other, never the document's own spelling"
+    },
+    {
+      "file": "121-vendor-subtype-without-appearance.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec annotationAppearance withoutAppearance: the same unknown subtype with a black /IC and /C but no appearance stream. A viewer draws nothing for a subtype it does not know when there is no appearance, so nothing is concealed and the text is in plain view; an implementation that derives a cover from /IC for any subtype reports a failure on a document with no problem"
+    },
+    {
+      "file": "122-stamp-colour-without-appearance.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec annotationAppearance withoutAppearance: a standard subtype (Stamp) with a black /IC and /C but no appearance stream, over live text. A viewer draws an annotation from its dictionary only for Square, Circle and Highlight; a Stamp with nothing but a colour draws nothing, and the rendered page shows the text. An implementation that treats the dictionary colour as a cover for any standard subtype reports a failure on a document with no problem. /Redact stays A3 whatever it draws (#119)"
+    },
+    {
+      "file": "123-compound-fill-two-bars.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.rectangularity (1.3): two black bars a page apart painted by one fill operator, each over a line of live text. Measured as one path, the bounding box spans the page and is about 5% filled, so neither bar is a cover and both lines come back clean while the page shows them blacked out; an implementation must measure each closed subpath on its own"
+    },
+    {
+      "file": "124-frame-drawn-after-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.3): a 5pt black border drawn round a line of text, after it. A stroke paints a ribbon along each segment, not the area the path encloses; an implementation that grows the whole path by half the pen width makes the frame a solid block and reports an ordinary table cell border as a cover over the words inside it"
+    },
+    {
+      "file": "125-frame-drawn-before-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath and A4 (1.3): the same border drawn before the text. Taken as a solid block it becomes the background the text is read against, and black text on white paper is reported as text the colour of its background"
+    },
+    {
+      "file": "126-white-box-with-black-border.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.nonDarkOpaqueCover (1.3 guard): a white box with a black border painted over the text with B, which fills and then strokes. The white fill does cover the words, opaque but not dark, so the case is a review; an implementation that takes the frame fix too far and dismisses a filled box because it also has a border passes it"
+    },
+    {
+      "file": "127-appearance-white-then-black.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A3 (1.3): an annotation whose appearance paints a white box and then a black box over the same live text. The first cover in the appearance is only its background; an implementation that stops at it grades the annotation by the white box and reports a review where the black box on top is a failure"
+    },
+    {
+      "file": "128-text-clipped-away.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip and A4 outsideClipOrCropBox (1.3): a line of text drawn inside a clip that lies elsewhere on the page, so none of it is drawn while the name comes straight out of the file. No cover candidate is near, so a review. The clip operator precedes the painting operator that ends its path; an implementation that takes W to apply to the path before it never applies a clip and cannot raise this"
+    },
+    {
+      "file": "129-text-in-a-clip-gap.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip (1.3): text in the gap between two clip rectangles set by one W. The hull of the clip covers the gap, so an implementation that tests the glyphs against the hull calls them visible when a reader sees nothing of them; each piece of the clip has to be tested"
+    },
+    {
+      "file": "130-text-inside-the-clip.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip (1.3 guard): ordinary clipped drawing, the text inside the clip rectangle. Clipping is routine (every table cell and cropped image does it), so an implementation that starts applying clips must not start reporting the text inside them"
+    },
+    {
+      "file": "131-clip-trims-a-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip and A2 (1.3): a black bar drawn over a name inside a clip that keeps only its left half. Half the name is still on the page, so a partial cover (A2) and not a full one; an implementation that never applies clips reads the bar at full width and calls the whole line covered"
+    },
+    {
+      "file": "132-undecodable-image-cover.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec imageDecoding (1.3 reachability): the bar over the text is an image that claims JPXDecode and is not a JPEG 2000 codestream. Its pixels cannot be read, so whether it is dark is unknown: A1 review with checksSkipped image-pixels-not-readable, never pass. The skip detail is a standard filter name or other, never the document's own spelling"
+    },
+    {
+      "file": "133-bar-over-undecodable-image.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 and imageDecoding (1.3 reachability): a black bar drawn over an image whose codec cannot be decoded. A6 asks whether the picture under the bar is intact; the pixels cannot be read, so the answer is a review with checksSkipped image-pixels-not-readable, never pass"
+    },
+    {
+      "file": "134-broken-chain-and-compressed-revision.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 outcomes and A9 documentInfo (1.3): #111 with the trailer's /Prev broken as well, so the file opens only through a repair and has more %%EOF markers than its chain accounts for. An implementation that cannot decompress the earlier bytes reads nothing legible and reports A7 review (the chain floor); one that decompresses them reads all of the text, finds it visible now and reports no A7. Either is allowed, as for #111, so A7 is in neither checks nor mustNotFlag. The document information the last trailer names (A9) must survive the repair; the verdict is review either way"
     }
   ]
 }

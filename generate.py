@@ -1022,6 +1022,437 @@ def case_114_reflowed_between_revisions() -> bytes:
     return bytes(out)
 
 
+def case_115_one_name_removed_from_a_sentence() -> bytes:
+    """The realistic redaction: one name taken out of a sentence.
+
+    The earlier revision reads "Yamada Taro lives in Yokohama"; the
+    current one reads "Taro lives in Yokohama". Only the surname is
+    hidden. Comparing whole strings reports the entire sentence as
+    recovered, which quotes four words that are plainly on the page;
+    comparing word by word reports the one word that is not.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    old_content = pdf.stream(text_op(72, 700, "Yamada Taro lives in Yokohama"))
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>>>/Contents {old_content} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    catalog = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    base = pdf.build(catalog)
+
+    new_body = text_op(72, 700, "Taro lives in Yokohama")
+    replacement = (
+        b"<</Length " + str(len(new_body)).encode("ascii") + b">>\nstream\n"
+        + new_body + b"\nendstream"
+    )
+    out = bytearray(base)
+    offset = len(out)
+    out += f"{old_content} 0 obj\n".encode("ascii") + replacement + b"\nendobj\n"
+    prev = base.rfind(b"startxref")
+    prev_xref = int(base[prev + len(b"startxref"):].split()[0])
+    xref_at = len(out)
+    out += b"xref\n"
+    out += f"{old_content} 1\n".encode("ascii")
+    out += f"{offset:010d} 00000 n \n".encode("ascii")
+    out += (
+        f"trailer\n<</Size {old_content + 1}/Root {catalog} 0 R/Prev {prev_xref}"
+        f"/ID [<ABYOCORPUS0001> <ABYOCORPUS0002>]>>\n"
+    ).encode("ascii")
+    out += f"startxref\n{xref_at}\n%%EOF\n".encode("ascii")
+    return bytes(out)
+
+
+def case_116_hidden_annotation_over_text() -> bytes:
+    """A black Square annotation marked Hidden, over live text.
+
+    /F bit 2 means the annotation is not drawn — not on screen, not on
+    paper — so the text under it is in plain view and nothing has been
+    concealed. An implementation that reads /Annots without checking the
+    flags reports a failure here and quotes the text printed on the page
+    as recovered from under a cover.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Square/Rect[68 694 358 720]"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 2>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_117_short_name_inside_a_longer_word() -> bytes:
+    """A two-letter surname in the earlier revision; a longer word now.
+
+    The earlier revision holds "Li". The current page says "Lions Club",
+    which contains those two letters without containing that name.
+    Substring matching calls the name visible and reports nothing at
+    all — a false clean, which is the verdict this tool must never get
+    wrong. Matching on word boundaries reports it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    old_content = pdf.stream(text_op(72, 700, "Li"))
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>>>/Contents {old_content} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    catalog = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    base = pdf.build(catalog)
+
+    new_body = text_op(72, 700, "Lions Club")
+    replacement = (
+        b"<</Length " + str(len(new_body)).encode("ascii") + b">>\nstream\n"
+        + new_body + b"\nendstream"
+    )
+    out = bytearray(base)
+    offset = len(out)
+    out += f"{old_content} 0 obj\n".encode("ascii") + replacement + b"\nendobj\n"
+    prev = base.rfind(b"startxref")
+    prev_xref = int(base[prev + len(b"startxref"):].split()[0])
+    xref_at = len(out)
+    out += b"xref\n"
+    out += f"{old_content} 1\n".encode("ascii")
+    out += f"{offset:010d} 00000 n \n".encode("ascii")
+    out += (
+        f"trailer\n<</Size {old_content + 1}/Root {catalog} 0 R/Prev {prev_xref}"
+        f"/ID [<ABYOCORPUS0001> <ABYOCORPUS0002>]>>\n"
+    ).encode("ascii")
+    out += f"startxref\n{xref_at}\n%%EOF\n".encode("ascii")
+    return bytes(out)
+
+
+def case_118_line_initial_word_unchanged() -> bytes:
+    """A word at the start of a line, unchanged by an incremental save.
+
+    Nothing was redacted: the save changed only the document
+    information, and "Yamada" is printed on the page. But the page text
+    comes out of the extractor run by run, and joining the runs end to
+    end puts the previous line's last letter directly in front of this
+    word — "signed by" and "Yamada" become "signed byYamada" — so a
+    word-boundary search finds no boundary and reports the name on the
+    page as recovered from an earlier revision.
+
+    The mirror image of a word the extractor splits across two runs,
+    which the separated join breaks in half instead. Both joins have to
+    be consulted.
+    """
+    body = (
+        b"BT\n0 0 0 rg\n/F1 14 Tf\n16 TL\n1 0 0 1 72 700 Tm\n"
+        b"(signed by) Tj\nT*\n(Yamada) Tj\nET\n"
+    )
+    return _incremental_info_save(body)
+
+
+def case_119_hidden_redact_annotation() -> bytes:
+    """An unapplied /Redact annotation marked Hidden.
+
+    A redaction mark that was never applied is the problem whether or
+    not anybody draws it, so the Hidden flag does not excuse it — where
+    for any other subtype Hidden means nothing is covered (#116). This
+    distinction was a bug introduced along with the Hidden check: it
+    made an unapplied redaction vanish from the report.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Redact/Rect[68 694 358 720]/IC[0 0 0]/CA 1/F 2>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_120_vendor_subtype_with_appearance() -> bytes:
+    """An annotation of an unknown subtype whose /AP paints a black box.
+
+    A3 only looks at subtypes it knows, so this cover is invisible to
+    it. It still has to be caught, and it is: A1 works from what was
+    actually painted, whatever the annotation calls itself. The point of
+    pinning it is that A3's subtype list is not load-bearing for safety
+    — widening it should add precision, not close a hole.
+
+    This file is also the tripwire for a leak the editor team found on
+    their side: an evidence field passing a document's own /Subtype
+    through verbatim. Nothing is reported for this subtype today, so
+    nothing leaks; the moment somebody adds it to the concealing set,
+    the saved-report guard sees the vendor name.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    appearance = pdf.stream(
+        b"0 0 0 rg\n0 0 290 26 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 290 26]",
+    )
+    annot = pdf.add(
+        f"<</Type/Annot/Subtype/VendorBox/Rect[68 694 358 720]"
+        f"/CA 1/F 4/AP<</N {appearance} 0 R>>>>".encode("ascii")
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_121_vendor_subtype_without_appearance() -> bytes:
+    """The same unknown subtype with a colour but no appearance stream.
+
+    A reader that does not recognise the subtype and has no appearance
+    to draw shows nothing, so nothing is concealed and the text is in
+    plain view. Deriving a cover from /IC for any subtype at all would
+    report a failure here on a document with no problem.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/VendorBox/Rect[68 694 358 720]"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 4>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_122_stamp_colour_without_appearance() -> bytes:
+    """A /Stamp with a black /IC and no appearance stream, over text.
+
+    Only some subtypes get an appearance synthesised from the
+    dictionary: a Square fills its /Rect, a Circle the ellipse inside
+    it, a Highlight its quads. A Stamp with nothing but /IC draws
+    nothing at all, so the text under it is in plain view — render the
+    page and the area is blank. Treating the dictionary colour as a
+    cover for any subtype reports a failure here on a document with no
+    problem.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Stamp/Rect[68 694 358 720]"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 4>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_123_compound_fill_two_bars() -> bytes:
+    """Two black bars, far apart, painted as one path.
+
+    `re re f` is a single fill operator holding two shapes. Judging it
+    by the whole path's bounding box gives a box spanning the page that
+    is about 5% filled, which is nowhere near rectangular enough to be a
+    cover — so both lines of text came back clean while the rendered
+    page shows them solidly blacked out. Each closed subpath has to be
+    judged on its own.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 700, SECRET)
+        + text_op(72, 300, SECRET)
+        + b"0 0 0 rg\n68 694 290 26 re\n68 294 290 26 re\nf\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_124_frame_drawn_after_text() -> bytes:
+    """A 5pt black border drawn round a paragraph, after the text.
+
+    A stroke covers a ribbon along each segment, not the area the path
+    encloses. Growing the whole path's box by half the pen width turns
+    the frame into a solid block over everything inside it, and the text
+    in the middle of an ordinary table cell reads as blacked out.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = text_op(72, 700, SECRET) + b"0 0 0 RG\n5 w\n60 680 320 60 re\nS\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_125_frame_drawn_before_text() -> bytes:
+    """The same border, drawn before the text rather than after.
+
+    The same over-approximation, reaching a different check: with the
+    frame treated as a solid block behind the words, black text on white
+    paper reads as text the same colour as its background.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = b"0 0 0 RG\n5 w\n60 680 320 60 re\nS\n" + text_op(72, 700, SECRET)
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_126_white_box_with_black_border() -> bytes:
+    """A white box with a black border, painted over the text.
+
+    Not a frame: `B` fills and then strokes, so the white fill really
+    does cover the words — opaque but not dark, which is a look rather
+    than a failure. Here to keep the fix for #124 from going too far and
+    dismissing a filled box because it also has a border.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 700, SECRET)
+        + b"1 1 1 rg\n0 0 0 RG\n5 w\n60 680 320 60 re\nB\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_127_appearance_white_then_black() -> bytes:
+    """An annotation appearance that paints white and then black.
+
+    The first thing drawn inside the appearance covers nothing — it is
+    the background. Stopping at the first cover found inside an
+    appearance grades the annotation by the white one and reports a look
+    where the black bar on top of it is a failure.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    appearance = pdf.stream(
+        b"1 1 1 rg\n0 0 290 26 re\nf\n0 0 0 rg\n0 0 290 26 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 290 26]",
+    )
+    annot = pdf.add(
+        f"<</Type/Annot/Subtype/Square/Rect[68 694 358 720]"
+        f"/CA 1/F 4/AP<</N {appearance} 0 R>>>>".encode("ascii")
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_128_text_clipped_away() -> bytes:
+    """A line of text parked outside the clip, so none of it is drawn.
+
+    Every pixel of that line is blank and the name comes straight out of
+    the file. The clip operator arrives BEFORE the path it applies to,
+    which is the opposite of what this implementation assumed, so the
+    clip was never applied to anything and this branch of A4 could not
+    fire at all — verified against the whole corpus: no file produced it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = b"q\n60 100 320 40 re\nW n\n" + text_op(72, 700, SECRET) + b"Q\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_129_text_in_a_clip_gap() -> bytes:
+    """Text in the gap between two clip rectangles.
+
+    The clip's hull covers the gap, so testing a run against the hull
+    says it is inside the clip and visible. It is not: a reader sees
+    nothing of it. Each piece of the clip has to be tested.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"q\n68 760 290 26 re\n68 100 290 26 re\nW n\n"
+        + text_op(72, 700, SECRET)
+        + b"Q\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_130_text_inside_the_clip() -> bytes:
+    """Ordinary clipped drawing: the text is inside the clip.
+
+    The guard on the two above. Clipping is routine — every table cell
+    and cropped image does it — so an implementation that starts
+    applying clips must not start reporting the text inside them.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = b"q\n60 680 320 40 re\nW n\n" + text_op(72, 700, SECRET) + b"Q\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_131_clip_trims_a_cover() -> bytes:
+    """A black bar clipped to half the text it was drawn over.
+
+    Half the name is still on the page, so this is a partial cover and
+    not a full one. It takes a working clip to tell the difference: an
+    implementation that never applies clips reads the bar at full width
+    and calls the whole line covered.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 700, SECRET)
+        + b"q\n68 694 145 26 re\nW n\n0 0 0 rg\n68 694 290 26 re\nf\nQ\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_132_undecodable_image_cover() -> bytes:
+    """A cover whose image codec cannot be decoded here.
+
+    The bar over the text claims to be JPEG 2000 and is not. Its own
+    pixels cannot be read, so whether it is dark is unknown — and a
+    check that could not run must never come back as a pass, so this is
+    a look. It is also the only file that reaches the
+    image-pixels-not-readable path at all, which is where the editor
+    team found a skip entry carrying the document's own /Filter name.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    img = pdf.stream(
+        b"\x00\x01\x02\x03not-a-real-jpeg2000-codestream",
+        "/Type/XObject/Subtype/Image/Width 8/Height 8"
+        "/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/JPXDecode",
+    )
+    body = text_op(72, 700, SECRET) + b"q\n290 0 0 26 68 694 cm\n/Im0 Do\nQ\n"
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_133_bar_over_undecodable_image() -> bytes:
+    """A dark bar over an image whose codec cannot be decoded here.
+
+    A6 asks whether the image data under a cover is still intact. Here
+    the image cannot be read at all, so the question is unanswerable
+    and the answer is a look — never a pass. The only file that reaches
+    that branch of A6.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    img = pdf.stream(
+        b"\x00\x01\x02\x03not-a-real-jpeg2000-codestream",
+        "/Type/XObject/Subtype/Image/Width 8/Height 8"
+        "/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/JPXDecode",
+    )
+    body = b"q\n290 0 0 60 68 660 cm\n/Im0 Do\nQ\n" + black_rect(68, 694, 290, 26)
+    root, _ = page(pdf, body, font=f, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_134_broken_chain_and_compressed_revision() -> bytes:
+    """Case 111 with its /Prev broken as well.
+
+    The file shows more revisions than its chain accounts for, and the
+    earlier bytes are compressed, so nothing legible comes out of them.
+    "No earlier content found" is then not something this engine
+    established, and the floor applies. The only file that reaches it.
+    """
+    return re.sub(rb"/Prev\s+\d+", b"/Xrev 0",
+                  case_111_compressed_earlier_revision())
+
+
 CASES = {
     "01-path-over-text": case_01_path_over_text,
     "02-image-over-text": case_02_image_over_text,
@@ -1061,6 +1492,26 @@ CASES = {
     "112-unopenable-with-structure-text": case_112_unopenable_with_structure_text,
     "113-unopenable-with-document-info": case_113_unopenable_with_document_info,
     "114-reflowed-between-revisions": case_114_reflowed_between_revisions,
+    "115-one-name-removed-from-a-sentence": case_115_one_name_removed_from_a_sentence,
+    "116-hidden-annotation-over-text": case_116_hidden_annotation_over_text,
+    "117-short-name-inside-a-longer-word": case_117_short_name_inside_a_longer_word,
+    "118-line-initial-word-unchanged": case_118_line_initial_word_unchanged,
+    "119-hidden-redact-annotation": case_119_hidden_redact_annotation,
+    "120-vendor-subtype-with-appearance": case_120_vendor_subtype_with_appearance,
+    "121-vendor-subtype-without-appearance": case_121_vendor_subtype_without_appearance,
+    "122-stamp-colour-without-appearance": case_122_stamp_colour_without_appearance,
+    "123-compound-fill-two-bars": case_123_compound_fill_two_bars,
+    "124-frame-drawn-after-text": case_124_frame_drawn_after_text,
+    "125-frame-drawn-before-text": case_125_frame_drawn_before_text,
+    "126-white-box-with-black-border": case_126_white_box_with_black_border,
+    "127-appearance-white-then-black": case_127_appearance_white_then_black,
+    "128-text-clipped-away": case_128_text_clipped_away,
+    "129-text-in-a-clip-gap": case_129_text_in_a_clip_gap,
+    "130-text-inside-the-clip": case_130_text_inside_the_clip,
+    "131-clip-trims-a-cover": case_131_clip_trims_a_cover,
+    "132-undecodable-image-cover": case_132_undecodable_image_cover,
+    "133-bar-over-undecodable-image": case_133_bar_over_undecodable_image,
+    "134-broken-chain-and-compressed-revision": case_134_broken_chain_and_compressed_revision,
 }
 
 
