@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.5",
+  "specVersion": "1.6",
   "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
@@ -972,7 +972,7 @@
         ]
       },
       "source": "generated",
-      "note": "spec clip pieces as regions (1.5, now MUST): a triangular clip, and a line of text inside the clip's bounding box but outside the triangle. Not one pixel of it is drawn (A4 outside-clip). An implementation that stands a piece's bounding box in for the piece calls the glyphs in the box's corner visible. The line also runs past the box's right edge (x 400), so an implementation that tests each glyph reports A4 for the glyphs beyond it either way: for such an implementation #153 is the file that tells the region from the box (checked here: with clip pieces replaced by their bounding boxes, #150 still raises A4 and #153 passes)"
+      "note": "spec clip pieces as regions (1.5 MUST): a triangular clip, and a short name inside the clip's bounding box (well clear of its right edge at x 400) but outside the triangle. Not one pixel of it is drawn (A4 outside-clip). An implementation that stands a piece's bounding box in for the piece calls the name visible and reports nothing. Rewritten in 1.6: the first version ran a long line past the box's right edge, so an implementation testing glyph by glyph raised A4 for the glyphs beyond the edge and the file passed for a reason unrelated to the triangle (checked here: with clip pieces replaced by their bounding boxes, #150 and #153 now both pass; with regions both raise A4)"
     },
     {
       "file": "151-triangular-clip-inside.pdf",
@@ -1063,6 +1063,819 @@
       },
       "source": "generated",
       "note": "spec glyphBox (1.5): text in a font with /Differences glyph names and no /ToUnicode, under a black bar. An extractor that maps the names recovers the letters, one that cannot maps them to nothing usable; either way the glyphs are drawn and covered (A1). A glyph never drops out of coverage because its character is unknown or unmappable; only a glyph that maps to white space may be ignored"
+    },
+    {
+      "file": "159-outline-signature-openaction-xfa.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 (1.6): four things that carry a name and sit on no page - a bookmark whose title holds a name and whose action is a mailto: address (bookmarks, linkTargets), a signature dictionary with the signer's /Name, /Reason and /Location (signatureDetails), a URI open action with a query string (linkTargets), and an XFA packet in /AcroForm (xfaForm, listed by presence and not parsed). None is an annotation, so reading URI actions only from /Annots misses the bookmark's and the open action's"
+    },
+    {
+      "file": "160-concave-clip-notch.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "a name in the notch of an L-shaped clip: six vertices and concave, the shape a parity test gets wrong when subtly broken, since an L's even edge count can hide a negated parity. The name is inside the L's bounding box and not one pixel of it is drawn (A4 outside-clip)"
+    },
+    {
+      "file": "161-concave-clip-lower-arm.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "the guard on #160: the same L-shaped clip with the name in its lower arm"
+    },
+    {
+      "file": "162-concave-clip-right-arm.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "the guard on #160: the same L-shaped clip with the name in its right arm. Both arms, because a parity test wrong in one direction can be right in the other and the notch alone would not say which"
+    },
+    {
+      "file": "163-inline-image-filter-chain.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec imageDecoding (inline images): a black inline image behind two filters, ASCII85 then Flate (/F as an array). Every filter in the chain comes off before the pixels mean anything; an implementation decoding only the unfiltered and Flate cases reports this cover as undecodable"
+    },
+    {
+      "file": "164-inline-image-unknown-filter.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail",
+          "review"
+        ],
+        "checks": []
+      },
+      "source": "generated",
+      "note": "an inline image cover behind a filter nothing can decode. Both answers conform: refusing to decode reports a cover that could not be read (review); falling back to the raw bytes reads what they say (here zeros, a dark cover and a fail). Neither may report a pass"
+    },
+    {
+      "file": "165-clip-edge-tangent.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6): a clip whose top edge sits exactly on the glyph box's bottom: zero area of the glyph shows and nothing is drawn. Visibility under a clip is a coverage question against the same fixed box and the same 0.15 as cover coverage, so a glyph showing less than that is clipped away and reported."
+    },
+    {
+      "file": "166-clip-edge-into-descent.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6): a clip reaching one point into the glyph box, below the baseline, where a word without descenders has no ink: nothing is drawn. About a tenth of the box shows, under the 0.15 threshold, so the glyph is clipped away. Asking only whether the box TOUCHES a piece passes a hidden, extractable line - a clip aligned to a table row lands exactly here."
+    },
+    {
+      "file": "167-clip-edge-clear-of-the-box.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "the same clip a point lower, clear of the glyph boxes: no box meets any piece, A4 under the 1.5 rule and the 1.6 rule alike"
+    },
+    {
+      "file": "168-clip-cuts-the-descent-band.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6): a clip whose edge is the baseline, cutting only the descent band: four fifths of each glyph box shows and the word reads perfectly (121 ink pixels). The case a visibility threshold must not catch, since the fixed box carries a descent whether or not the word has descenders and a clip at the baseline always trims a fifth of it."
+    },
+    {
+      "file": "169-clip-leaves-an-ascender-sliver.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6): a clip leaving only the top point of each glyph box: a tenth of the box and almost nothing of the word (4 ink pixels against 121 for 168). Under the threshold, so the name is reported - extractable, and nobody can read it off the page."
+    },
+    {
+      "file": "170-overlapping-clip-bands.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6, union MUST): two nearly identical thin clip bands over the top of a line: each leaves about a tenth of every glyph box showing and they overlap by nine tenths, so the union is an eighth (under the threshold) while the plain sum is a fifth (over it). Four ink pixels on the page, the same as 169, and the name is extractable. Summing the pieces double-counts the overlap, over-states what shows and under-reports."
+    },
+    {
+      "file": "171-clip-with-too-many-pieces.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": []
+      },
+      "source": "generated",
+      "note": "spec clip visibility (1.6, union MUST, limits): thirteen overlapping 1.1 pt clip bands over the top of a 10 pt line. Their union leaves the top fifth of each glyph box showing, at least coverPartialMin, so an implementation that computes the union exactly finds the line drawn (pass); one whose bounded union is exceeded must floor the page at review rather than fall back to the summed area, which over-states what shows. Either is the rule; a fail is not."
+    },
+    {
+      "file": "172-scan-with-a-burnt-in-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image (1.6 cells): a band burnt into the scan's own pixels (one row of eight) over an invisible OCR line. The scan is about an eighth dark as a whole, so a whole-image reading makes it no cover; per glyph, every cell under the band is dark and the line is covered. Renderer: the line's area is black on screen and the text extracts."
+    },
+    {
+      "file": "173-rotated-cover-over-blacked-image.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (1.6, the intersection of the regions): a correct redaction under a square turned 30 degrees, the picture's pixels black wherever the square lies. Sampling the square's bounding box takes in the corners it adds, which are not blackened, and reports a correct redaction as a leak."
+    },
+    {
+      "file": "174-black-image-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (any candidate source): #07's leak with the cover drawn as a black image instead of a rectangle - the photo under it is intact."
+    },
+    {
+      "file": "175-marker-stroke-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (any candidate source): the same leak drawn as a 40 pt black stroke, the marker-pen blackout over a photo whose pixels were never touched."
+    },
+    {
+      "file": "176-marker-over-blacked-image.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.3 ribbons): the negative of #174/#175 - a diagonal marker over pixels that really are black under it. A segment's bounding box is about five times the ribbon it paints; sampling the box sees intact picture in its corners and calls a correct redaction a leak."
+    },
+    {
+      "file": "177-inline-separation-type4.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail",
+          "review"
+        ],
+        "checks": []
+      },
+      "source": "generated",
+      "note": "spec imageDecoding: an inline image in a Separation space whose tint transform is a PostScript calculator (FunctionType 4) mapping full tint to black, reachable only through a named page resource, over a line that still extracts. An implementation that evaluates Type 4 finds a dark cover (A1 fail); one that does not reports the cover unread (review). Neither may pass: read the space wrong and the same bytes are white."
+    },
+    {
+      "file": "178-band-over-part-of-a-run.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image (1.6 cells), per glyph: a band burnt into a scan over eight characters in the middle of a 66-character invisible OCR line. Over the run's own rectangle the image is an eighth dark and the band is no cover; darkness is asked glyph by glyph, the unit every coverage rule uses."
+    },
+    {
+      "file": "179-band-under-a-doubled-run.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A5 (findings per region): the same invisible line shown twice over one burnt-in band. Each run finds the same dark region; two identical rectangles each contain the other, and dropping 'the one inside' dropped both. One finding is the answer, not two and not none."
+    },
+    {
+      "file": "180-anisotropic-stroke-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6, user-space pen): a 10 pt pen under 10 0 0 1 0 0 cm, a stroke 100 pt wide on the page. sqrt(|det CTM|) gives 32 pt; the picture is black exactly there and intact either side, so a stroke measured by one number for the whole transform looks at the blackened sliver and passes."
+    },
+    {
+      "file": "181-miter-join-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6 joins): a wide marker drawn as a V, the picture blackened under the two straight runs and intact under the corner. A miter join (the default) paints a wedge outside both ribbons, up to miterLimit times the half width; independent ribbons leave the wedge covered on screen and never looked at."
+    },
+    {
+      "file": "182-butt-cap-stroke-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6 caps): a correct redaction under a short wide butt-capped stroke, 10 pt of travel and 40 pt across, the picture blackened exactly where it paints. Butt caps (the default) stop at the endpoints; a cap grown round every end makes four fifths of the modelled cover intact picture nobody covered, and a correct redaction reads as a leak."
+    },
+    {
+      "file": "183-rotated-image-cover-over-strip.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image (1.6 region): a black image turned 45 degrees over a photo blackened everywhere but a strip inside the cover. The cover's bounding box is twice the cover and the extra is already black, so the box reads 96% dark and the strip is outvoted. An image's region is the parallelogram its matrix maps the unit square to."
+    },
+    {
+      "file": "184-clipped-cover-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (effective region): a black rectangle clipped to a thin L over a plan blackened everywhere but the middle of each arm. Trimmed to the clip's bounding box the cover is fifty times what it paints, and the intact corridor it sits on is outvoted fifty to one."
+    },
+    {
+      "file": "185-comb-image-under-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec imageSampling (1.6, no comb): a striped image under a cover that spans it, every third of 192 columns black. 64 samples at cell midpoints all land on black columns and read the region fully dark while two thirds of the picture is intact; the samples sit at fixed low-discrepancy offsets inside their cells."
+    },
+    {
+      "file": "186-band-just-short-of-the-glyph-box.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image (1.6 cells): a burnt-in band covering 93% of each glyph box of an invisible OCR line. One number for the box is short of the 95% a candidate needs and the line goes unreported; cut into 20 x 20 cells, each judged by the candidate rule, the box is covered by the coverage rule (coverFail)."
+    },
+    {
+      "file": "187-reversed-heading.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A4",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4.imageBackground: white letters reversed out of a scanned black heading, ordinary and readable. An image declares no colour; skipping it puts paper white behind every run on a scan, and white on black reads as white on white."
+    },
+    {
+      "file": "188-black-on-scanned-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4.imageBackground: black letters on the black band of a scan - nothing of them shows and every word is in the file. The other half of #187: with the image's pixels unasked the background is paper white and black on black reads as high contrast."
+    },
+    {
+      "file": "189-outlined-title.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 (1.6 inks by mode): white letters outlined in black, Tr 2 - a readable title. A glyph paints with its fill for modes 0/2/4/6 and its stroke for 1/2/5/6, and is the same as its background only when EVERY ink it paints is; judged by its fill alone an ordinary title reads as hidden text."
+    },
+    {
+      "file": "190-stroke-only-white-text.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 (1.6 inks by mode): the mirror of #189 - Tr 1 strokes and does not fill, a white outline on white paper, so nothing of the line shows and every word is in the file. Read by its fill colour (black, never painted) it is high contrast and passes."
+    },
+    {
+      "file": "191-tr3-under-unreadable-cover.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A5 / imageDecoding (1.6): invisible (Tr 3) text drawn after an image no decoder here reads. Whether the image hides anything is what could not be established: a review with checksSkipped image-pixels-not-readable in either draw order, never the pass it was when the OCR layer came after the image. An implementation that decodes the codec reports what its pixels say, hence fail is accepted."
+    },
+    {
+      "file": "192-form-inside-text-object.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec drawOrder (1.6 text state across a form): a Form XObject with a text matrix of its own, drawn inside the parent's BT before the parent shows its line. A form is parsed with its own text state; the parent's line lands where the parent's Tm put it, under the bar, not where the form left the matrix."
+    },
+    {
+      "file": "193-tagged-strings-past-the-cap.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": []
+      },
+      "source": "generated",
+      "note": "spec limits (1.6 general rule): sixty /ActualText entries in the page's /PieceInfo - fifty captions also on the page, then ten names that are not. An implementation with a cap below sixty must report the list as cut short and floor at review; one that reads all of them and fails the names is conformant too. Reporting nothing is not. Checks are not named: the editor's A8 reads replacement texts of marked content and structure elements (checks.A8), so it reaches /PieceInfo through A9 (pieceInfo, review); the browser checker's byte scan raises A8."
+    },
+    {
+      "file": "194-earlier-revision-many-strings.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec limits (1.6 general rule) and A7: an earlier revision (a whole file followed by its final version) holding sixty lines of a draft. An implementation that stops short of sixty fails on what it read and reports how far the reading got; the lines it did not read are what it must not pass over in silence. The editor reads every string of a revision (no cap)."
+    },
+    {
+      "file": "195-pattern-filled-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "acceptVerdicts": [
+          "pass",
+          "review"
+        ],
+        "checks": []
+      },
+      "source": "generated",
+      "note": "spec 1.6 limits (A4 inks): a line painted with a tiling pattern that contrasts with the paper. An implementation that resolves the pattern finds it readable (pass); one that cannot must say so rather than stay silent (the editor: A4 review text-colour-not-read, noteKey fill-colour-unreadable). Written as #171 is - pass with review accepted - because acceptVerdicts may not add pass to a stricter verdict; the browser checker writes it as review with pass accepted."
+    },
+    {
+      "file": "196-curved-marker-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath: a correct redaction under a 40 pt curved marker stroke. A Bezier's control points are not points on the curve - this one's control polygon bulges 50 pt above the apex - so following them models the stroke over picture nobody covered. The editor flattens curves before stroking (8 segments per curve)."
+    },
+    {
+      "file": "197-miter-join-repeated-vertex.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (joins): #181's leak with the corner vertex written twice. The zero-length segment between the copies has no direction; a corner that loses its join leaves the mitre wedge unmodelled and the picture inside it recoverable. The editor drops repeated points before it finds the corners."
+    },
+    {
+      "file": "198-round-cap-stroke-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (caps): a correct redaction under a 100 pt round-capped stroke with 10 pt of travel, so the caps are most of what it paints. A round cap is a half-disc; a projecting square adds four corners of untouched picture to the cover."
+    },
+    {
+      "file": "199-bevel-join-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (joins): a correct redaction under a bevel-joined V (2 j). A bevel cuts the corner with a straight edge; anything round reaches past the ink and fails a sound document."
+    },
+    {
+      "file": "200-closed-two-point-stroke.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath: `200 500 m 300 500 l h S` with a 40 pt pen paints a plain 100 x 40 rectangle - a reversal has no mitre and a bevel across it has no width. Taking the two 180-degree corners as round grows the cover half a pen past each end."
+    },
+    {
+      "file": "201-dashed-rule-over-image.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6, dash patterns): a dashed boundary line over a picture blacked out only under the dashes. The gaps show the picture and hide nothing; a stroke that ignores d is one continuous cover across untouched picture. The editor strokes the dashes only (and past its bound takes the stroke solid, marked over-approximated: review)."
+    },
+    {
+      "file": "202-anisotropic-diagonal-correct.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A5",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6, user space): a 10 pt pen on a short diagonal under `10 0 0 1 0 0`, picture blacked exactly where the ink lands. The pen is round in user space, so the ink is a parallelogram; a width-across plus width-along rectangle covers picture the stroke never touched."
+    },
+    {
+      "file": "203-image-clipped-to-an-L.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image (1.6, effective region): a photograph, then a mostly pale image clipped to a thin black L over it. Measuring the whole image sees the pale pixels outside the clip, calls it not dark and never asks what it covers; the editor samples the image's pixels inside its clipped placement (the L's real region)."
+    },
+    {
+      "file": "204-band-behind-part-of-a-line.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 (per glyph): a black band behind eight characters in the middle of a line of black text. Read once for the whole line the background is mostly paper and black-on-black goes unreported; the editor asks the background at each glyph's centre."
+    },
+    {
+      "file": "205-white-text-in-an-L-notch.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background (1.6, Codex v107 round 5): white text in the notch of a black L drawn as ONE concave path. The notch is paper, so the text is white on white. Judging the background by the path's hull or bounding box - which takes in the notch - makes it white on black and passes it; the editor reads the region the path really paints (ear-clipped)."
+    },
+    {
+      "file": "206-black-text-in-an-L-notch.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background (1.6, Codex v107 round 5): #205's guard - black text in the same notch, which anyone can read. By the hull it is black on black and an ordinary caption is reported as hidden."
+    },
+    {
+      "file": "207-transparent-text-over-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4/A5 division (1.6, Codex v107 round 5): white text at /ca 0 over a black band. An ink of alpha 0 paints nothing, so text whose every ink is such is invisible text, judged like Tr 3 - here under a cover. Read as white on black it is high contrast, and a check that only looks at mode 3 passes it. Faint but non-zero alpha is A4's (#224)."
+    },
+    {
+      "file": "208-text-clip-mode-7.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 clip visibility (1.6, Codex v107 round 5): a glyph-shaped clip (7 Tr adds the letters' outlines to the clip at ET), then ordinary text well outside it: nothing of it reaches the page and all of it extracts. An implementation that watches only W/W* never sees the clip. The editor takes each outline as its glyph box - an inexact bound that proves text outside the boxes clipped out (review away from a candidate) but never proves text inside visible (review). Fail is accepted for an implementation that has the outlines."
+    },
+    {
+      "file": "209-two-clips-in-sequence.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip (intersection): a cover clipped to a thin L and then again to the whole page, over a plan blacked out everywhere except along the L. A second clip intersects with the first and cannot widen it; keeping only the latest measures the cover across the page, where the picture is already black, and the intact corridor is outvoted."
+    },
+    {
+      "file": "210-sparse-stencil-over-photo.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.image / A6 (stencil masks): a 100 x 100 stencil with a single bit set laid over a photograph in black - one speck, the photograph in plain view. Taking the fill colour alone makes every stencil a solid cover over its rectangle; the editor's A6 counts a sample under a stencil only where the stencil paints a cover-sized area around it (candidate.size)."
+    },
+    {
+      "file": "211-solid-stencil-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (stencil masks): the same stencil with every bit set - #174's leak drawn as a mask, a solid black block over an un-redacted photograph."
+    },
+    {
+      "file": "212-stencil-band-over-ocr.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A5 (stencil masks): a stencil painting a solid band across the page with invisible OCR text under it. Half the mask is paper, so the mask as a whole is no cover, and the band is: darkness is asked where the text is. The editor measures A5 against the stencil's region (an over-statement, the safe direction for coverage)."
+    },
+    {
+      "file": "213-stencil-band-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (stencil masks): a stencil painting a solid band over an un-redacted photograph, with no text near it. The browser checker declares this a gap (it measures a partly painted cover only where text sits under it); the editor's A6 samples the picture wherever the stencil paints solidly and fails it."
+    },
+    {
+      "file": "214-text-outside-form-bbox.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 clip (1.6, form /BBox): a Form XObject whose /BBox is 50 x 50, with a line drawn at (100, 100) inside it. The form's own clip cuts the whole line away: nothing reaches the page and all of it extracts. A form whose /BBox is not applied as a clip reads it as ordinary text on the page (the browser checker's typed-array test refused the box). Clipped out away from a candidate: review, fail accepted."
+    },
+    {
+      "file": "215-bowtie-clip.pdf",
+      "expect": {
+        "verdict": "review",
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 clip pieces as regions (1.6): a self-crossing clip, a bow-tie, with text in the gap between its two lobes - nothing of it is drawn. Four points on two x and two y values also describe a rectangle, so its bounding box puts the gap inside the clip; its signed area cancels to zero, so an area test for a degenerate shape calls the clip empty, the opposite mistake. The editor splits the path at its crossing and clips to the two triangles."
+    },
+    {
+      "file": "216-solid-colour-stencil.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A6 (stencil masks): a 1 x 1 stencil whose one sample paints, scaled into a black block over an un-redacted photograph. A stencil whose mask is all ones paints its whole rectangle - #211 at the smallest size. pdf.js reports it as paintSolidColorImageMask with no mask to read, and taking that as a stencil nobody could read made a solid cover a review."
+    },
+    {
+      "file": "217-nearly-opaque-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4/A5 inks (1.6): white text at /ca 0.94 over a black band - not quite opaque and perfectly readable. The opacity a COVER needs (minFillAlpha) is no measure of whether an ink paints: a cover has to be nearly opaque to hide anything, text only has to be barely there to be read."
+    },
+    {
+      "file": "218-triangular-hole.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4 background (1.6, holes as regions): a black rectangle with a reverse-wound triangular hole, and black text in a corner of the triangle's bounding box - on black, and extractable. A hole taken out as its bounding box removes black the cover does paint, so the corners read as paper and the text as black on white. The editor cuts the hole out as the triangle it is."
+    },
+    {
+      "file": "219-text-in-a-rotated-bars-corner.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.6, regions not boxes): readable text in the corner that a 45-degree black square's bounding box adds, with the square drawn over it (123 ink pixels show). Coverage measured against the box reports the line covered; the editor measures it against the square's own region."
+    },
+    {
+      "file": "220-text-in-a-clipped-covers-gap.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec clip (effective region): readable text in the white gap between the two side rectangles a cover is clipped to, with the cover drawn over it. The cover's rectangle spans the gap; its clip does not, so the cover is the two side pieces and the text in between is not covered."
+    },
+    {
+      "file": "221-dotted-rule-over-photo.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6, dash patterns): a round-capped dotted rule ([0 5] 0 d, 20 pt pen) over an un-redacted photograph; the dots overlap into a solid black band. A zero-length dash is a dot, not nothing - with round or square caps it paints its cap shape - and dropping those pieces leaves the rule out of the model, a false pass for the photograph under it."
+    },
+    {
+      "file": "222-odd-dash-array.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (1.6, dash patterns): [3] 4 d. An odd-length array repeats to make its real period, [3 3], twice its sum, and the phase 4 lands inside the first gap; the picture is blacked out exactly under the dashes. Reducing the phase modulo the single sum starts the line on ink, every dash lands on untouched picture, and a correct document fails."
+    },
+    {
+      "file": "223-doubling-back-stroke.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A6"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.strokedPath (caps and joins): a 40 pt projecting-capped stroke that doubles back on itself (200 500 m 220 500 l 200 500 l S), the picture blacked out under the ink it really lays down. Caps belong to the ends of an open subpath and to each dash; an internal vertex is a join, and a 180-degree turn has no mitre and a bevel of no width. Capping the turn carries the modelled ink 20 pt past it, over picture nobody covered."
+    },
+    {
+      "file": "224-faint-text-over-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "acceptVerdicts": [
+          "fail"
+        ],
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4/A5 division (1.6): white text at /ca 0.1 over a black band. Nothing of it shows (the band stays black on screen) and every word extracts. Its alpha is not zero, so it paints something and is not A5's; what it paints differs from the band by alpha x |B(ink, bg) - bg| = 0.1, under hiddenContrast: A4 same-as-background. Colours alone say white on black is high contrast, and asking only whether the alpha is zero says it shows."
+    },
+    {
+      "file": "225-visible-half-opacity-text.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A4",
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A4/A5 division (1.6): #224's guard - the same line at /ca 0.5, which differs from the band by 0.5 and is read without trouble."
     }
   ]
 }
