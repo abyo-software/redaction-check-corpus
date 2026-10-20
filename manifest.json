@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.3",
+  "specVersion": "1.4",
   "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
@@ -788,6 +788,144 @@
       },
       "source": "generated",
       "note": "spec A7 outcomes and A9 documentInfo (1.3): #111 with the trailer's /Prev broken as well, so the file opens only through a repair and has more %%EOF markers than its chain accounts for. An implementation that cannot decompress the earlier bytes reads nothing legible and reports A7 review (the chain floor); one that decompresses them reads all of the text, finds it visible now and reports no A7. Either is allowed, as for #111, so A7 is in neither checks nor mustNotFlag. The document information the last trailer names (A9) must survive the repair; the verdict is review either way"
+    },
+    {
+      "file": "135-ring-with-a-hole.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.region (1.4 hole rule): a black ring - two nested rectangles under the even-odd rule - drawn before a name that sits in the hole. The inner subpath is a hole, so the ring paints only the band and the name is read against paper. An implementation that takes each subpath as painted throughout makes the ring a solid block and reports black text on black (A4)"
+    },
+    {
+      "file": "136-ring-text-on-the-band.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.region (1.4 hole rule, guard on #135): the same ring drawn after a name that lies under its upper band. Subtracting the hole must not lose the cover the band really paints, so the name is covered (A1)"
+    },
+    {
+      "file": "137-nested-subpaths-same-winding.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec candidate.region (1.4 hole rule): the two rectangles of #135, both wound the same way, filled under the nonzero rule. The windings add up instead of cancelling, so there is no hole: the shape is solid and the black name drawn inside it cannot be seen (A4). An implementation that treats any nested subpath as a hole calls the name visible and passes the file"
+    },
+    {
+      "file": "138-pale-cover-over-part-of-a-line.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A3 ladder (1.4 reminder of its two thresholds): an opaque grey Square annotation over the first glyphs of a line. A dark appearance fails from coverPartialMin, one that is only opaque is a review only from coverFail, and coveredFraction is measured per glyph box. The box hides the first nine glyphs whole, so the middle rung applies: review, as for #95, never fail. Measuring over the whole line instead would let a grey box over one name inside a sentence pass"
+    },
+    {
+      "file": "139-seam-two-bars.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ],
+        "mustNotFlag": [
+          "A2"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.4): two black bars, drawn by separate fill operators, meet edge to edge in the middle of a line. Every glyph is wholly under black, the one on the seam included, so the line is covered (A1) and nothing on it partly shows. Measured cover by cover, the glyph on the seam is half under each bar and is reported as a partial cover (A2)"
+    },
+    {
+      "file": "140-seam-many-bars.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec glyphBox.coverage (1.4): the line of #139 under ten narrow black bars that abut, each covering about a tenth of it. The union of the bars hides the whole line (A1). Measured cover by cover with the fraction taken over the line, no bar reaches either threshold and the file passes while every glyph is black"
+    },
+    {
+      "file": "141-form-field-value.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 formValues (1.4): a name typed into a text field. The value travels with the file and is not drawn on the page, so it is hidden information (A9 review). Counting the fields that exist instead of reading what they hold says nothing about it, and the value has to be read off the widget annotation as well as through the form's field tree"
+    },
+    {
+      "file": "142-form-field-array-value.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 formValues (1.4): a multi-select choice field whose /V is an array of strings, two of the three options selected. A reader that expects /V to be a string or a name finds nothing and passes a non-empty selection"
+    },
+    {
+      "file": "143-empty-form-field.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 formValues (1.4 guard on #141 and #142): a text field with no /V at all. A field that exists is not a value; counting fields reports form values on a blank form"
+    },
+    {
+      "file": "144-many-clip-pieces.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A4"
+        ]
+      },
+      "source": "generated",
+      "note": "spec limits (1.4): a name drawn in the gap between two bands of a clip made of eighty small rectangles, one band well above the line and one well below. The hull of the pieces covers the line and no piece does, so the name is clipped away (A4). An implementation that keeps only so many pieces and falls back to their hull takes the name as drawn and reports nothing; exceeding a limit must mark the page as not fully examined instead"
+    },
+    {
+      "file": "145-annotation-over-a-name.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A3 and recovered span (1.4): an opaque black Square annotation over one name inside a long sentence. Coverage is per glyph, so the name is covered and the words around it are not (A3 fail). The finding's recovered text is the covered span only; quoting the whole sentence would present words still printed on the page as recovered from under the cover (held by each implementation's own tests, not by the manifest)"
+    },
+    {
+      "file": "146-invisible-text-under-a-name-bar.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A5"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A5 and recovered span (1.4): the sentence of #145 drawn in render mode 3 (invisible), a black bar over the one name. The invisible name under the bar is A5; the recovered text is the covered span, not the line"
     }
   ]
 }

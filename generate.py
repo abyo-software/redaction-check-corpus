@@ -1453,6 +1453,255 @@ def case_134_broken_chain_and_compressed_revision() -> bytes:
                   case_111_compressed_earlier_revision())
 
 
+def case_135_ring_with_a_hole() -> bytes:
+    """A black ring: two nested rectangles, even-odd fill, text in the hole.
+
+    The inner subpath is a hole, so the outer paints only the band
+    around it and the text in the middle is on paper. Taking each
+    subpath as painted throughout makes the ring a solid block, and
+    black text in the middle of a frame then reads as text the colour
+    of its background.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"0 0 0 rg\n60 640 320 120 re\n100 680 240 40 re\nf*\n"
+        + text_op(110, 694, SECRET)
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_136_ring_text_on_the_band() -> bytes:
+    """The same ring with the text on the band rather than in the hole.
+
+    The guard on #135: subtracting the hole must not lose the cover the
+    ring really does paint.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = text_op(72, 750, SECRET) + (
+        b"0 0 0 rg\n60 640 320 140 re\n100 680 240 40 re\nf*\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_137_nested_subpaths_same_winding() -> bytes:
+    """Nested subpaths wound the same way, nonzero fill: no hole.
+
+    Under the nonzero rule a nested subpath is a hole only when the
+    windings cancel. These do not, so the shape is solid and the text
+    inside it really is invisible. An implementation that treats any
+    nesting as a hole misses this.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        b"0 0 0 rg\n60 640 320 120 re\n100 680 240 40 re\nf\n"
+        + text_op(110, 694, SECRET)
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_138_pale_cover_over_part_of_a_line() -> bytes:
+    """A pale opaque annotation overlapping the first third of a line.
+
+    The ladder has two thresholds: a dark cover fails as soon as it
+    covers a sliver, where a cover that is merely opaque earns a look
+    only once it hides essentially all of a run. Using the sliver
+    threshold for both reports an ordinary pale box that happens to
+    overlap a line.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Square/Rect[68 694 150 720]"
+        b"/IC[0.6 0.6 0.6]/C[0.6 0.6 0.6]/CA 1/F 4>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_139_seam_two_bars() -> bytes:
+    """A line met in the middle by two abutting bars.
+
+    Neither bar covers enough of the line on its own to count as having
+    hidden it, so measuring cover by cover reports the line twice as
+    "part of it still shows" when none of it does. Coverage is against
+    the union of the covers drawn over the glyph.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = (
+        text_op(72, 700, SECRET)
+        + b"0 0 0 rg\n68 694 150 26 re\nf\n"
+        + b"0 0 0 rg\n218 694 150 26 re\nf\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_140_seam_many_bars() -> bytes:
+    """The same line under ten narrow abutting bars.
+
+    Each covers about a tenth of it, under any sensible threshold, so
+    cover by cover reports nothing at all — and every pixel of that line
+    is black. The false clean the union rule exists for.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    bars = b""
+    x = 68
+    for _ in range(10):
+        bars += f"0 0 0 rg\n{x} 694 24 26 re\nf\n".encode("ascii")
+        x += 24
+    root, _ = page(pdf, text_op(72, 700, SECRET) + bars, font=f)
+    return pdf.build(root)
+
+
+def _acroform_page(field_src: bytes, name: str) -> bytes:
+    """A one-page document whose only annotation is one form field."""
+    pdf = Pdf()
+    f = helvetica(pdf)
+    field = pdf.add(field_src)
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(text_op(72, 760, "Public part of the document"))
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>>>/Contents {contents} 0 R"
+            f"/Annots[{field} 0 R]>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    root = pdf.add(
+        (
+            f"<</Type/Catalog/Pages {pages_num} 0 R"
+            f"/AcroForm<</Fields[{field} 0 R]/DA(/Helv 10 Tf 0 g)"
+            f"/DR<</Font<</Helv {f} 0 R>>>>>>>>"
+        ).encode("ascii")
+    )
+    return pdf.build(root)
+
+
+def case_141_form_field_value() -> bytes:
+    """A name typed into a text field.
+
+    The value travels with the file and is not on the page. Counting the
+    fields that exist rather than reading what they hold says nothing
+    about it — and the library's getFieldObjects() comes back empty for a
+    file it cannot relate to an /AcroForm, so the value has to be read
+    off the widget annotation.
+    """
+    return _acroform_page(
+        b"<</Type/Annot/Subtype/Widget/FT/Tx/T(name)/Ff 0"
+        b"/Rect[72 700 300 720]/F 4/DA(/Helv 10 Tf 0 g)"
+        b"/V(Yamada Taro 1980-04-01)>>",
+        "141",
+    )
+
+
+def case_142_form_field_array_value() -> bytes:
+    """A multi-select choice field whose value is an ARRAY of strings.
+
+    A reader that expects a string or a name finds nothing here, so a
+    non-empty selection passes. The editor team found exactly this on
+    their side.
+    """
+    return _acroform_page(
+        b"<</Type/Annot/Subtype/Widget/FT/Ch/Ff 2097152/T(picks)"
+        b"/Rect[72 700 300 720]/F 4/DA(/Helv 10 Tf 0 g)"
+        b"/Opt[(Yamada)(Suzuki)(Tanaka)]/V[(Yamada)(Tanaka)]>>",
+        "142",
+    )
+
+
+def case_143_empty_form_field() -> bytes:
+    """A form field with no value at all.
+
+    The guard on the two above: counting the fields that exist reports
+    "form values: 1" on a blank form and tells the reader nothing about
+    whether anybody filled it in.
+    """
+    return _acroform_page(
+        b"<</Type/Annot/Subtype/Widget/FT/Tx/T(blank)/Ff 0"
+        b"/Rect[72 700 300 720]/F 4/DA(/Helv 10 Tf 0 g)>>",
+        "143",
+    )
+
+
+def case_144_many_clip_pieces() -> bytes:
+    """Text in a gap between eighty clip pieces, inside their hull.
+
+    The pieces sit in two bands, well above and well below the line, so
+    the hull of the clip covers the line and no piece of it does. An
+    implementation that caps the pieces it keeps and falls back to their
+    hull calls the text inside the clip and reports nothing; one that
+    tests the pieces sees that none of them reaches the text.
+
+    Putting the text outside the hull as well — the first version of
+    this file — cannot tell the two apart, because a hull engine also
+    finds it outside and reports it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    rects = b""
+    for band_y in (760, 120):
+        placed = 0
+        y = band_y
+        while placed < 40:
+            x = 68
+            while x < 500 and placed < 40:
+                rects += f"{x} {y} 20 8 re\n".encode("ascii")
+                x += 26
+                placed += 1
+            y += 12 if band_y == 120 else -12
+    body = b"q\n" + rects + b"W n\n" + text_op(72, 440, SECRET) + b"Q\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+SENTENCE = "The applicant Yamada Taro of Yokohama filed the request on 2026-01-05"
+
+
+def case_145_annotation_over_a_name() -> bytes:
+    """A dark annotation over one name inside a long sentence.
+
+    Coverage is per glyph, so the name is covered outright and the
+    sentence around it is not. What the finding reports matters as much:
+    quoting the whole sentence presents the words still printed on the
+    page as recovered from under the cover.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Square/Rect[140 697 235 709]"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 4>>"
+    )
+    root, _ = page(
+        pdf, text_op(72, 700, SENTENCE, size=10), font=f,
+        annots=f"/Annots[{annot} 0 R]",
+    )
+    return pdf.build(root)
+
+
+def case_146_invisible_text_under_a_name_bar() -> bytes:
+    """A bar over one name of an invisible line.
+
+    A5's half of the same thing: the line is drawn in render mode 3 and
+    a bar covers one name in it.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = text_op(72, 700, SENTENCE, size=10, tr=3) + b"0 0 0 rg\n140 697 95 12 re\nf\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
 CASES = {
     "01-path-over-text": case_01_path_over_text,
     "02-image-over-text": case_02_image_over_text,
@@ -1512,6 +1761,18 @@ CASES = {
     "132-undecodable-image-cover": case_132_undecodable_image_cover,
     "133-bar-over-undecodable-image": case_133_bar_over_undecodable_image,
     "134-broken-chain-and-compressed-revision": case_134_broken_chain_and_compressed_revision,
+    "135-ring-with-a-hole": case_135_ring_with_a_hole,
+    "136-ring-text-on-the-band": case_136_ring_text_on_the_band,
+    "137-nested-subpaths-same-winding": case_137_nested_subpaths_same_winding,
+    "138-pale-cover-over-part-of-a-line": case_138_pale_cover_over_part_of_a_line,
+    "139-seam-two-bars": case_139_seam_two_bars,
+    "140-seam-many-bars": case_140_seam_many_bars,
+    "141-form-field-value": case_141_form_field_value,
+    "142-form-field-array-value": case_142_form_field_array_value,
+    "143-empty-form-field": case_143_empty_form_field,
+    "144-many-clip-pieces": case_144_many_clip_pieces,
+    "145-annotation-over-a-name": case_145_annotation_over_a_name,
+    "146-invisible-text-under-a-name-bar": case_146_invisible_text_under_a_name_bar,
 }
 
 

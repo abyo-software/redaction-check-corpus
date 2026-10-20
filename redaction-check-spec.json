@@ -1,7 +1,18 @@
 {
-  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value or rule bumps specVersion. Version 1 agreed 2026-10-20; version 1.1 agreed 2026-10-20 after the browser checker found false passes (see changes and requirements); version 1.2 agreed 2026-10-20 (annotation flags, word-boundary visible text, A7 recovered words, noteKey earlier-revision-not-read, detail as a code, declared evidence values, dictionary-drawn annotations; #115-#122); version 1.3 agreed 2026-10-20 (closed subpaths measured separately, strokes as per-segment ribbons, A3 takes any dark cover of an annotation, a clip kept as its pieces, every emitted code reached; #123-#134). See docs/design/disclosure-redaction/design.md sections 4.2.1 and 8.",
-  "specVersion": "1.3",
+  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value or rule bumps specVersion. Version 1 agreed 2026-10-20; version 1.1 agreed 2026-10-20 after the browser checker found false passes (see changes and requirements); version 1.2 agreed 2026-10-20 (annotation flags, word-boundary visible text, A7 recovered words, noteKey earlier-revision-not-read, detail as a code, declared evidence values, dictionary-drawn annotations; #115-#122); version 1.3 agreed 2026-10-20 (closed subpaths measured separately, strokes as per-segment ribbons, A3 takes any dark cover of an annotation, a clip kept as its pieces, every emitted code reached; #123-#134); version 1.4 agreed 2026-10-20 (winding-aware holes, the A3 ladder's two thresholds, coverage against the union of the covers, clip pieces as regions, limits that never reduce what is reported, form values read rather than counted, and the unit of findings outside the contract, the recovered span; #135-#146). See docs/design/disclosure-redaction/design.md sections 4.2.1 and 8.",
+  "specVersion": "1.4",
   "changes": {
+    "1.4": [
+      "candidate.region (hole rule, restated): whether a nested subpath is a hole is decided by the fill rule on the actual winding numbers, never by nesting alone. Under even-odd a point is painted when it is enclosed an odd number of times. Under nonzero it is painted when the sum of the windings around it (each subpath's orientation, read from the sign of its area) is not zero: an inner subpath wound against its outer is a hole (#135 under even-odd, guarded by #136 with the text on the band), one wound the same way is not, and the shape is solid (#137). An implementation that treats any nesting as a hole calls text inside a solid shape visible",
+      "A3 ladder (reminder): the ladder has two thresholds. A dark appearance fails from coverPartialMin; an appearance that is only opaque is a review only from coverFail. Applying coverPartialMin to every opaque appearance reports an ordinary pale box that merely touches a line. coveredFraction remains per glyph box (coveredFraction(glyphBox, candidate)), so a pale box that hides the first glyphs of a line whole is the middle rung, a review (#138); measuring over the whole line would let a grey box over one name in a sentence pass",
+      "glyphBox.coverage: a glyph's coveredFraction is measured against the UNION of all the dark covers drawn after it, not cover by cover (no maximum over single covers, no sum). Two bars meeting on a seam through a glyph cover it fully, an A1 and not a partial cover (A2) by each (#139); ten narrow abutting bars, each covering a tenth of a line, hide all of it (#140). The same holds wherever a check compares coveredFraction with a threshold for dark covers: A1, A2, A5, and the dark covers of one annotation's appearance for A3. Non-dark and unread-colour covers are still measured one at a time",
+      "clip pieces as regions: when a clip piece is used for glyph visibility (A4 outside-clip), the piece SHOULD be the region its subpath encloses, not that subpath's bounding box. A bounding box is larger than a rotated or non-rectangular piece, so text in the corner it adds is taken as drawn: a narrow miss, hence SHOULD and not MUST",
+      "limits: a cap or limit inside an implementation must never reduce what is reported. Exceeding it either over-states coverage, or marks the page as not fully examined (the reviewFloor, with a declared checksSkipped reason or noteKey). It never falls back to an approximation that can hide text. A clip kept as the hull of its pieces once their number passed a cap made the gaps between the pieces part of the clip, and text in a gap passed with no finding (#144: a name in the gap between two bands of eighty clip pieces, inside their hull)",
+      "A9 formValues: a form value is what a terminal field's /V holds, read from the field tree and from widget annotations: a text string (#141), a name, or an ARRAY of strings or names (a multi-select choice, #142). A field that exists without a value, an empty string, and the name Off (a check box or radio button that is not set) are not values; counting the fields that exist reports values on a blank form (#143)",
+      "findings: the number of findings and their unit (one per cover, per run or per glyph) are NOT part of the contract. What a manifest case states - the verdict, the required checks and mustNotFlag - is",
+      "recovered span: the recovered text of a cover finding (A1, A2, A3, A5) is, for each line, the span from the first covered character to the last, read back from the run so that its spaces survive - including a gap written as a move rather than a space glyph: \"amada Taro of Yoko\", not \"amadaTaroofYoko\". Never the whole run: the uncovered words around the span are still printed on the page and are not recovered from under anything (#145, #146)",
+      "what the manifest constrains: the verdict and which checks fire (expect.checks, mustNotFlag). What a finding says - its recovered text, its evidence - is constrained by each implementation's own tests"
+    ],
     "1.3": [
       "candidate.rectangularity / candidate.region: a filled path is measured one closed subpath at a time. Each subpath is its own painted region with its own rectangularity, so two bars painted by one fill operator are two covers (#123), not one hull about 5% filled. A subpath nested inside another is a hole when the fill rule leaves its inside unpainted (even-odd, or nonzero with the windings cancelling): the outer then covers only the ring around the hole, never the hole. Subpaths that overlap without nesting are each taken as painted throughout (an over-estimate, the safe direction for A1). Subpaths that touch and together are rectangular may be measured as one region, so a glyph on the seam between two abutting bars is not split between them",
       "candidate.strokedPath: a stroke paints a ribbon along each segment of each subpath (the closing segment included for a closed subpath), each the segment grown by half the line width, never the area the path encloses. A frame drawn after text is not a cover of the text inside it (#124), and a frame drawn before text is not the background that text is read against (A4, #125). A fill-and-stroke (B, B*, b, b*) is its fill regions and then its ribbons, so a white box with a black border over text is still an opaque non-dark cover (#126)",
@@ -110,6 +121,9 @@
         "101-stroke-colour-blackout.pdf",
         "102-white-stroke-over-text.pdf"
       ]
+    },
+    "limits": {
+      "rule": "A cap or limit inside an implementation must never reduce what is reported. Exceeding it either over-states coverage, or marks the page as not fully examined (verdicts.reviewFloor, with a declared checksSkipped reason or noteKey). It never falls back to an approximation that can hide text (1.4)"
     }
   },
   "visibleText": {
@@ -180,7 +194,8 @@
       "halfWidthEm": 0.5
     },
     "consultFontDescriptor": false,
-    "$comment": "FontDescriptor /Ascent and /Descent are deliberately NOT read: pdf.js and PDFium expose them differently and missing/zero values are common, so a fixed box is the only one both engines compute identically."
+    "$comment": "FontDescriptor /Ascent and /Descent are deliberately NOT read: pdf.js and PDFium expose them differently and missing/zero values are common, so a fixed box is the only one both engines compute identically.",
+    "coverage": "coveredFraction(glyphBox, covers) is the area of the glyph box inside the UNION of the covers' effective regions over the glyph box's area (1.4). For dark covers it is taken over every dark cover drawn after the glyph at once (for A3, the dark covers of the one annotation's appearance); a cover that is not dark is measured on its own"
   },
   "imageDecoding": {
     "rule": "When an implementation cannot read an image's pixels (typically /DCTDecode, /JPXDecode, /JBIG2Decode or /CCITTFaxDecode, depending on the engine), every check that needs that image's pixels yields REVIEW for the affected region, never pass, and the report adds a checksSkipped entry with reason image-pixels-not-readable, the page, the count of such images, and detail = the terminal filter name when known.",
@@ -197,14 +212,14 @@
       "id": "A1",
       "title": "不透明な図形・画像の下に取り出せるテキスト",
       "defaultVerdict": "fail",
-      "rule": "glyph drawn before a candidate with coveredFraction(glyphBox, candidate) >= coverFail. An opaque non-dark cover gives review (candidate.nonDarkOpaqueCover); a cover of unreadable colour (requirements.shading) gives review with noteKey fill-colour-unreadable; an image whose pixels cannot be read gives review with checksSkipped image-pixels-not-readable (imageDecoding); unread content gives checksSkipped content-truncated; Type 3 glyphs not inspected give type3Glyphs.notInspected; an internal failure while examining a page gives checksSkipped check-failed and the page-not-examined finding (verdicts.reviewFloor).",
+      "rule": "glyph drawn before candidates with coveredFraction >= coverFail against the union of the dark candidates drawn after it (glyphBox.coverage, 1.4). An opaque non-dark cover gives review (candidate.nonDarkOpaqueCover); a cover of unreadable colour (requirements.shading) gives review with noteKey fill-colour-unreadable; an image whose pixels cannot be read gives review with checksSkipped image-pixels-not-readable (imageDecoding); unread content gives checksSkipped content-truncated; Type 3 glyphs not inspected give type3Glyphs.notInspected; an internal failure while examining a page gives checksSkipped check-failed and the page-not-examined finding (verdicts.reviewFloor).",
       "coverFail": 0.85
     },
     {
       "id": "A2",
       "title": "黒塗りが文字に一部しかかかっていない",
       "defaultVerdict": "fail",
-      "rule": "coverPartialMin <= coveredFraction < coverFail for a glyph drawn before a candidate",
+      "rule": "coverPartialMin <= coveredFraction < coverFail for a glyph drawn before dark candidates, coveredFraction taken against their union (glyphBox.coverage, 1.4)",
       "coverPartialMin": 0.15
     },
     {
