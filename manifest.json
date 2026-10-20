@@ -1,6 +1,6 @@
 {
-  "specVersion": "1",
-  "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on codec-dependent cases (spec imageDecoding). A pending case's file is absent and harnesses skip it.",
+  "specVersion": "1.1",
+  "note": "Expected verdicts for the shared redaction corpus. Authoritative copy is kept with the abyo PDF Editor; github.com/abyo-software/redaction-check-corpus publishes it and the browser checker mirrors it. generate.py deliberately carries no expectations. #12 must be produced with Acrobat and is pending until it arrives; #13/#13b were produced with the abyo editor's CLI; #90 is a generated stand-in used only to test for false positives. mustNotFlag lists checks that would be a false positive on that file; the suite fails if any of them is raised. acceptVerdicts appears only on capability-dependent cases (spec imageDecoding; #112, a file that one implementation repairs and another cannot open). A pending case's file is absent and harnesses skip it.",
   "cases": [
     {
       "file": "01-path-over-text.pdf",
@@ -127,7 +127,7 @@
         ]
       },
       "source": "generated",
-      "note": "author name and original path in document info"
+      "note": "author name in document info, and /Creator holding the original file path (a UNC path); both count under A9 (the spec's A9 definition)"
     },
     {
       "file": "12-acrobat-correct.pdf",
@@ -215,7 +215,7 @@
         ]
       },
       "source": "generated",
-      "note": "paper scan, no extractable text"
+      "note": "paper scan, no extractable text: one image over the whole CropBox (A10 coverage is the summed area of the page's image paints)"
     },
     {
       "file": "16-same-name-other-page.pdf",
@@ -285,6 +285,269 @@
       },
       "source": "generated",
       "note": "a scan with an OCR text layer and nothing redacted - the commonest real-world shape; guards the rule that an opaque image is only a blackout when its own pixels are dark"
+    },
+    {
+      "file": "93-encrypted-opens-empty-password.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A11"
+        ]
+      },
+      "source": "generated",
+      "note": "owner-password-only RC4: encrypted, opens with the empty password, so A11 must stay quiet and the content is checked as usual"
+    },
+    {
+      "file": "94-encrypted-needs-password.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A11"
+        ]
+      },
+      "source": "generated",
+      "note": "a user password is required and not known: nothing inside can be checked, which is reported, never passed"
+    },
+    {
+      "file": "95-grey-square-annot.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "A3 ladder, middle rung: an opaque but light annotation over text conceals it and comes off with the annotation, but nothing says it was meant as a redaction"
+    },
+    {
+      "file": "96-yellow-highlight-annot.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "A3 ladder, bottom rung: an ordinary yellow highlight hides nothing, so no cover check may fire; guards against flagging every highlighted document. The annotation carries no comment text, so nothing else is raised either (annotation text is #107)"
+    },
+    {
+      "file": "97-black-highlight-annot.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "A3 ladder, top rung: a highlight in black, no appearance stream, used as a marker pen over text"
+    },
+    {
+      "file": "98-highlight-dark-appearance.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "/C says yellow, the /AP stream paints opaque black over the text: the appearance decides, not the dictionary"
+    },
+    {
+      "file": "99-form-xobject-blackout.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirement formXObject: the black box is drawn inside a Form XObject whose /Matrix alone places it over the text; without the form matrix the box lands at the origin and covers nothing"
+    },
+    {
+      "file": "100-annotation-scaled-appearance.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirement annotationAppearance: the appearance /BBox is 10x10 and must be fitted to the wide /Rect (PDF 32000 12.5.5); there is no /C or /IC, so only the fitted appearance shows the cover. A1 may also be raised (spec checksSemantics)"
+    },
+    {
+      "file": "101-stroke-colour-blackout.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirement strokeState: the cover is a wide black stroke while the fill colour is white; the stroke colour (RG) decides, not the fill colour (rg)"
+    },
+    {
+      "file": "102-white-stroke-over-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirement strokeState, reversed: a wide white stroke over text with the fill left at the default black - opaque but not dark, so review, not fail"
+    },
+    {
+      "file": "103-shading-cover.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec requirement shading: a shading clipped over the text is a cover whose colour is not read, so it surfaces as review rather than disappearing"
+    },
+    {
+      "file": "104-type3-glyph-cover.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A1"
+        ]
+      },
+      "source": "generated",
+      "note": "spec type3Glyphs: the cover is a Type 3 glyph whose /CharProcs procedure (d1, so a stencil in the current fill colour) fills a black box over the text. An implementation that expands glyph procedures fails this file; one that cannot must report type3-glyph-not-inspected and never pass it"
+    },
+    {
+      "file": "105-image-mostly-off-page.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A10"
+        ]
+      },
+      "source": "generated",
+      "note": "a page-sized image hanging off the top edge, about a tenth of it on the paper: A10 coverage counts each image paint only where it lies on the CropBox, so this is not a scan (the discriminator against measuring a paint unclipped)"
+    },
+    {
+      "file": "106-images-in-opposite-corners.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A10"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A10: a text-free page with a small image in two opposite corners. Coverage is the summed clipped image area, not the union bounding box, which would span almost the whole sheet (the discriminator against the box)"
+    },
+    {
+      "file": "107-annotation-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ],
+        "mustNotFlag": [
+          "A1",
+          "A2",
+          "A3"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A9 annotationText: a note left in a Square annotation's /Contents, over empty space. It covers no text and is not a cover, so A9 is the only check this file exercises"
+    },
+    {
+      "file": "108-broken-revision-chain.pdf",
+      "expect": {
+        "verdict": "fail",
+        "checks": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 revisionDiscovery: #08 with the trailer's /Prev broken. The earlier revision's bytes are intact; only the chain no longer points at them, so an implementation that counts revisions by the chain alone reads one revision and passes the file. The surplus %%EOF marker is the signal"
+    },
+    {
+      "file": "109-stray-eof-marker.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 revisionDiscovery, reversed: a correct single-revision redaction (#90) with one stray %%EOF appended. The bytes before the first marker are the document itself, so the text read from them is visible in the current document and is not a leak"
+    },
+    {
+      "file": "110-metadata-only-incremental-save.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ],
+        "mustNotFlag": [
+          "A7"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 outcomes: an ordinary incremental save that changed only the document information, content uncompressed. The earlier revision holds exactly the text still on the page, so A7 reports nothing; the review comes from A9 (title and author)"
+    },
+    {
+      "file": "111-compressed-earlier-revision.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "spec A7 outcomes: #110 with the earlier revision's content Flate-compressed, as a real editor writes it. An implementation that decompresses earlier revisions reads all of its text, finds it visible now and reports no A7; one that cannot decompress them reports A7 review (an earlier revision exists and could not be read), which is allowed, so A7 is in neither checks nor mustNotFlag. The verdict is review either way because of A9"
+    },
+    {
+      "file": "112-unopenable-with-structure-text.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A8"
+        ],
+        "acceptVerdicts": [
+          "review",
+          "fail"
+        ]
+      },
+      "source": "generated",
+      "note": "case 09 with /Root pointing at a missing object: the file does not open as written, but the name is still in an /ActualText entry. A8 reads the bytes and must still report it. An implementation that cannot open the file reports A8 review (with no page to compare against, a tagged string cannot be told from a caption); one that repairs the file and opens it may report A8 fail, so both verdicts are accepted"
+    },
+    {
+      "file": "113-unopenable-with-document-info.pdf",
+      "expect": {
+        "verdict": "review",
+        "checks": [
+          "A9"
+        ]
+      },
+      "source": "generated",
+      "note": "case 11 with /Root pointing at a missing object, as #112: the author's name and the original file path (a UNC path) are in /Info, so A9 must still list them. An implementation that cannot open the file reads /Info from the bytes (spec A9 onOpenFailure); one that repairs and opens it reads the same dictionary through the document, so the verdict is review either way. Outlines, form values and hidden layers need the document's structure and are not expected here"
+    },
+    {
+      "file": "114-reflowed-between-revisions.pdf",
+      "expect": {
+        "verdict": "pass",
+        "checks": [],
+        "mustNotFlag": [
+          "A7",
+          "A8"
+        ]
+      },
+      "source": "generated",
+      "note": "the same sentence written as one run, then re-flowed across a line break into two runs by an incremental save: every word of the earlier revision is printed on the page, but the earlier string's spaces and the extracted text's spacing differ, so the visible-text comparison has to ignore white space on both sides (spec A7 visibleText); a literal comparison reports a clean file as hiding its own sentence"
     }
   ]
 }

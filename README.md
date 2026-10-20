@@ -13,7 +13,10 @@ The criteria and test PDFs for checking whether redactions in a PDF really remov
 - 無料の墨消しチェッカー（ブラウザ版）: https://abyo.net/pdf/redaction-check/ （英語: https://abyo.net/pdf/en/redaction-check/ ）
 - abyo PDF Editor の保存前検査（開発中）
 
-どちらの実装も、このリポジトリの全ファイルについて `manifest.json` と同じ判定を出すことをテストで確かめています。
+どちらの実装も、このリポジトリの全ファイルについて `manifest.json` と同じ判定（verdict）を出すことをテストで確かめています。
+`expect.checks` に挙げた検査項目は必ず出す必要があり、`mustNotFlag` に挙げた項目は出してはいけません。それ以外の項目を追加で出すことは許されます。
+
+`manifest.json` が定めるのは、基準に沿うどの実装も出すべき結果です。圧縮された古い版を読めるか、壊れたファイルを修復して開けるかといった能力の差で結果が変わるケース（#111、#112 など）は、弱い側に合わせた期待値にし、`acceptVerdicts` と注記で示しています。それより強い結果は、各実装が自分のテストで確かめます。
 特定のソフトに甘い基準にしないため、ほかのソフトで正しく墨消ししたファイルが「問題なし」になることも確かめる方針です
 （Acrobat で処理したファイル #12 は準備中です）。
 

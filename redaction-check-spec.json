@@ -1,9 +1,42 @@
 {
-  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value bumps specVersion. Values agreed 2026-10-20; see docs/design/disclosure-redaction/design.md section 8.",
-  "specVersion": "1",
+  "$comment": "Shared contract between the editor's C# checker and the browser checker (pdf.js). Authoritative copy: testdata/redaction-corpus/redaction-check-spec.json in the abyo PDF Editor repository; the browser checker mirrors it. Both implementations load THIS file for thresholds; neither hard-codes a number. Changing any value or rule bumps specVersion. Version 1 agreed 2026-10-20; version 1.1 agreed 2026-10-20 after the browser checker found false passes (see changes and requirements). See docs/design/disclosure-redaction/design.md sections 4.2.1 and 8.",
+  "specVersion": "1.1",
+  "changes": {
+    "1.1": [
+      "requirements: four normative requirements (formXObject, annotationAppearance, shading, strokeState), each with a corpus fixture (#99-#103); an implementation that misses one passes a leaking file",
+      "checksSemantics: implementations agree on the VERDICT; expect.checks is a required subset, extra checks are allowed except those in mustNotFlag",
+      "A3: the ladder (/Redact or a dark appearance -> fail; opaque but light -> review; a /Highlight that is not dark -> no finding)",
+      "A9: which document-information entries count, in PDF terms; annotation /Contents is listed explicitly (#107)",
+      "A10: coverage is the SUM of the areas of the page's image paints, each after CTM and clip and intersected with the CropBox, over the CropBox area, capped at 1 (v1: one image). Not their union bounding box: two small images in opposite corners would span the page (#106)",
+      "A11: fires only when the file cannot be opened; owner-password-only files are examined and pass A11",
+      "glyphBox.vertical: the box for vertical writing mode",
+      "units.luminance: annotation colour arrays and Lab",
+      "fileReport.notInspected: fixed keys instead of sentences",
+      "candidate.sources: shading",
+      "type3Glyphs: expanding Type 3 glyph procedures is RECOMMENDED; an implementation that cannot must report type3-glyph-not-inspected and never pass the file (#104)",
+      "checksSkipped: reasons are fixed codes (reasonCodes); page, count and detail are separate fields, never interpolated. image-codec-not-decodable:<Filter> became image-pixels-not-readable with detail = the filter",
+      "finding.noteKey: a fixed code when a finding says something could not be examined; such a finding is not rendered with the check's generic description and remedy",
+      "verdicts.wording.passWithSkipped: the pass headline is qualified whenever checksSkipped is non-empty",
+      "checksSkipped: reason check-failed (page, detail = the failure name) for an internal failure while examining a page; the other pages are still examined, and the page carries a review finding with noteKey page-not-examined, so the file is never pass (verdicts.reviewFloor)",
+      "finding.noteKey: page-not-examined",
+      "A7: earlier revisions are found by the cross-reference chain AND by surplus %%EOF markers (revisionDiscovery, #108, #109); three outcomes (fail / nothing / review), and 'all recovered text is visible' needs something read (#110, #111)",
+      "checksSkipped: reason revisions-not-readable for A7, detail chain or revision, with its floor in verdicts.reviewFloor",
+      "verdicts.reviewFloor: page-level failures are carried on A1 and mean that none of the page-level checks ran on that page",
+      "manifest.sharedExpectations: where shared expectations stop",
+      "A7/A8/A9 onOpenFailure: when the file cannot be opened, A7, A8 and A9 run from the file's bytes; A7 and A8 are review there (noteKey read-from-file-bytes); A9 lists document information, attachments and JavaScript; they are in checksRun, not checksSkipped (#112, #113)",
+      "finding.noteKey: read-from-file-bytes",
+      "A7/A8 visible-text filter: the comparison ignores white space on both sides (#114)"
+    ]
+  },
   "units": {
     "length": "PDF points in the page's user space after CTM and clipping, before /Rotate; origin bottom-left (rect = x0,y0,x1,y1 with x0<x1, y0<y1)",
-    "luminance": "L = 0.2126 R + 0.7152 G + 0.0722 B on 0..1 components as written in the PDF (no gamma decoding). DeviceGray g -> R=G=B=g. DeviceCMYK -> R=(1-C)(1-K), G=(1-M)(1-K), B=(1-Y)(1-K). ICCBased/CalRGB/Lab: use the alternate/N-component rule above. Indexed: look up the base. Separation/DeviceN: tint transform when available, else treat as unknown (not a candidate, record in checksSkipped detail)."
+    "luminance": "L = 0.2126 R + 0.7152 G + 0.0722 B on 0..1 components as written in the PDF (no gamma decoding). DeviceGray g -> R=G=B=g. DeviceCMYK -> R=(1-C)(1-K), G=(1-M)(1-K), B=(1-Y)(1-K). ICCBased/CalRGB: use the alternate/N-component rule above. Lab: L = L*/100 (a* and b* ignored). Indexed: look up the base. Separation/DeviceN: tint transform when available, else unknown: never a dark candidate, and a cover of unknown colour is graded like requirements.shading (review, noteKey fill-colour-unreadable). An annotation colour array (/C, /IC) is read by its length (1 gray, 3 RGB, 4 CMYK, 0 = transparent) with every component normalised to 0..1 before the formula (clamped; an implementation whose library returns 0..255 divides by 255 first)."
+  },
+  "checksSemantics": {
+    "verdict": "Two implementations, and an implementation and the manifest, must agree on the file VERDICT (fail/review/pass).",
+    "checks": "expect.checks is a REQUIRED SUBSET: every listed check must be raised; checks not listed may also be raised, except those in expect.mustNotFlag, whose appearance is a false positive.",
+    "annotationCovers": "A cover drawn by an annotation appearance must raise A3. An implementation MAY also raise A1 for it (the browser checker does, the editor does not); a manifest lists only A3 for such a cover.",
+    "$comment": "Agreed 2026-10-20 (v1.1). Rect and per-finding detail are not part of the contract; a differential run compares verdict, the raised-check set within these rules, and page numbers."
   },
   "verdicts": {
     "levels": [
@@ -11,25 +44,64 @@
       "review",
       "pass"
     ],
-    "fileVerdict": "worst finding verdict; pass when there are no findings. A check listed in checksSkipped never yields pass for that check; the report must show it.",
+    "fileVerdict": "worst finding verdict; pass when there are no findings. A check listed in checksSkipped never yields pass for that check (the one exception is revisions-not-readable with detail chain, see reviewFloor); the report must show it.",
+    "reviewFloor": "A file that was not completely examined is never pass: the verdict is at least review. In particular a page with checksSkipped reason check-failed carries an A1 finding with verdict review, the page, noteKey page-not-examined and detail = the failure name; findings already made on that page and on every other page are kept, and the remaining pages and the document checks are still examined (a file that leaks on page 1 and fails internally on page 3 still reports the page-1 fail). A7: revisions-not-readable with detail revision (an earlier revision exists and nothing legible could be read from it) always floors the verdict at review, with an A7 review finding; detail chain (the cross-reference chain cannot be followed, or a byte prefix found by an %%EOF marker does not open) floors it at review ONLY when nothing at all could be read from the earlier bytes - when another earlier revision was read, the entry is listed and the pass headline is qualified (wording.passWithSkipped), but no finding is added.",
+    "pageLevelCarrier": "page-not-examined and type3-not-inspected findings, and their checksSkipped entries (check-failed, type3-glyph-not-inspected), are carried on A1 by convention. A1 is only the carrier: a page that could not be examined means that NONE of the page-level checks (A1-A6, A10) ran on that page. An implementation MUST NOT list every page-level check for a failed page, and the reader-facing sentence describes the page, not the check.",
     "wording": {
       "fail": "問題あり",
       "review": "要確認",
-      "pass": "検査した{n}項目で問題は見つかりませんでした"
-    }
+      "pass": "検査した{n}項目で問題は見つかりませんでした",
+      "passWithSkipped": "検査した{n}項目で問題は見つかりませんでした。ただし、文書の一部で実行できなかった検査があります"
+    },
+    "wordingRules": [
+      "When checksSkipped is non-empty, an implementation MUST NOT present the pass headline as 'n checks found nothing' without qualification; it uses passWithSkipped, which states that some checks could not run on part of the document.",
+      "A finding that carries a noteKey says the implementation could not examine something; it MUST NOT be rendered with the check's generic description and remedy (which would claim a problem was found) - each surface shows its own sentence for the noteKey.",
+      "Neither checksSkipped reasons nor noteKeys are ever shown as raw codes or extended with text; every surface owns the sentence for each code."
+    ]
   },
   "drawOrder": {
-    "rule": "Page content stream(s) in order, with every Form XObject expanded at its Do (recursively, including nested forms, patterns are NOT expanded), then each annotation's normal appearance (/AP /N, honouring /F hidden and /OC off) in /Annots order. Annotations are always above page content.",
+    "rule": "Page content stream(s) in order, with every Form XObject expanded at its Do (recursively, including nested forms, patterns are NOT expanded) under requirements.formXObject, then each annotation's normal appearance (/AP /N, honouring /F hidden and /OC off) in /Annots order, placed under requirements.annotationAppearance. Annotations are always above page content.",
     "textBeforeCandidateOnly": true
   },
+  "requirements": {
+    "$comment": "Normative since v1.1. Each one is a way an implementation reported a file with readable text under an opaque cover as clean; the fixture named is the case that goes wrong without it.",
+    "formXObject": {
+      "rule": "Everything drawn inside a Form XObject is transformed by the form's /Matrix (concatenated onto the CTM at the Do) and clipped by the form's /BBox mapped through that matrix. A cover placed only by the form matrix is a cover where the matrix puts it.",
+      "fixture": "99-form-xobject-blackout.pdf"
+    },
+    "annotationAppearance": {
+      "rule": "An annotation's appearance stream is fitted to /Rect per PDF 32000-1 12.5.5 (Algorithm 8.1): transform the appearance /BBox by its /Matrix, take the bounding box of the result, and map that box onto /Rect (scale and translate); the appearance's content is drawn through /Matrix then that mapping, clipped to /Rect. The colour comes from the appearance stream, not from /C or /IC.",
+      "withoutAppearance": "An annotation with no usable /AP /N is drawn from /IC, else /C (units.luminance for the array): a Square fills its /Rect, a Circle the ellipse inscribed in /Rect, a Highlight its /QuadPoints quads (none -> nothing drawn) with blend mode Multiply; /CA is the alpha. No colour -> nothing drawn. /Redact is A3 regardless of what it draws.",
+      "fixture": "100-annotation-scaled-appearance.pdf"
+    },
+    "shading": {
+      "rule": "A shading - the sh operator, which paints the current clip (the whole page when unclipped), or a fill or stroke whose colour is a pattern (shading or tiling) - is a cover whose colour cannot be read from the content stream. When it is opaque and cover-shaped (candidate.opaque and candidate.size on its effective region) and covers earlier text with coveredFraction >= coverFail, it is an unreadable cover: an A1 finding with verdict below and noteKey fill-colour-unreadable - never fail, never silently ignored. The check did run, so this is a finding, not a checksSkipped entry.",
+      "fixture": "103-shading-cover.pdf",
+      "verdict": "review",
+      "noteKey": "fill-colour-unreadable"
+    },
+    "strokeState": {
+      "rule": "Stroke colour (G, RG, K, CS/SC/SCN) and stroke alpha (CA, including CA set through an ExtGState with gs) are tracked separately from the fill colour and fill alpha (g, rg, k, cs/sc/scn, ca). A stroked path is graded by the stroke colour and stroke alpha only; a filled path by the fill state only.",
+      "fixtures": [
+        "101-stroke-colour-blackout.pdf",
+        "102-white-stroke-over-text.pdf"
+      ]
+    }
+  },
+  "type3Glyphs": {
+    "rule": "A Type 3 font's glyphs are drawn by its /CharProcs procedures, which may paint covers. Expanding them is RECOMMENDED: walk the procedure of each shown glyph through /FontMatrix, then the text rendering matrix ([Tfs*Th 0 0 Tfs 0 Trise] x Tm), then the CTM, using the font's /Resources (else the page's). After d1 the glyph is a stencil: its colour operators are ignored and it paints in the fill colour in force where the glyph is shown; after d0 the procedure sets its own colours. A glyph's own drawing never covers that glyph, nor is it the background A4 reads that glyph against.",
+    "notInspected": "An implementation that cannot inspect a Type 3 glyph's drawing (it does not expand procedures, or a procedure cannot be read) MUST add checksSkipped {check:\"A1\", reason:\"type3-glyph-not-inspected\", page, count} and an A1 finding with verdict review and noteKey type3-not-inspected, and MUST NOT return pass for that file: the verdict is at least review.",
+    "fixture": "104-type3-glyph-cover.pdf"
+  },
   "candidate": {
-    "$comment": "A 'cover candidate' (黒塗り候補). Evaluated on the EFFECTIVE region: shape transformed by CTM and intersected with the current clip.",
+    "$comment": "A 'cover candidate' (黒塗り候補). Evaluated on the EFFECTIVE region: shape transformed by CTM and intersected with the current clip. A shading (requirements.shading) is a cover whose colour is unknown: never a dark candidate, always reported.",
     "sources": [
       "filledPath",
       "strokedPath",
       "image",
       "imageMask",
-      "annotationAppearance"
+      "annotationAppearance",
+      "shading"
     ],
     "dark": {
       "maxLuminance": 0.25
@@ -68,28 +140,33 @@
     }
   },
   "glyphBox": {
-    "rule": "x from the glyph origin to origin + advance (Tw/Tc/Tz applied); y from baseline + descent to baseline + ascent with a FIXED ascent of 0.8 em and descent of -0.2 em; then transformed by Tm x CTM. Both implementations MUST use this box, not ink bounds, so coverage fractions agree.",
+    "rule": "Horizontal writing: x from the glyph origin to origin + advance (Tw/Tc/Tz applied); y from baseline + descent to baseline + ascent with a FIXED ascent of 0.8 em and descent of -0.2 em; then transformed by Tm x CTM. Vertical writing: see vertical. Both implementations MUST use this box, not ink bounds, so coverage fractions agree.",
     "ascentEm": 0.8,
     "descentEm": -0.2,
+    "vertical": {
+      "appliesWhen": "the font writes vertically: /WMode 1 in its CMap, or a predefined vertical CMap (a name ending in -V, e.g. Identity-V, UniJIS-UCS2-V)",
+      "rule": "In text space at the glyph origin: across the line x0 = origin.x - halfWidthEm, x1 = origin.x + halfWidthEm (in em, times Tfs); along the line y1 = origin.y, y0 = origin.y - advance, where advance is the vertical displacement (1 em by the default /DW2, plus Tc and Tw); then transformed by Tm x CTM. The 0.8/-0.2 em pair does not apply.",
+      "halfWidthEm": 0.5
+    },
     "consultFontDescriptor": false,
     "$comment": "FontDescriptor /Ascent and /Descent are deliberately NOT read: pdf.js and PDFium expose them differently and missing/zero values are common, so a fixed box is the only one both engines compute identically."
   },
   "imageDecoding": {
-    "rule": "When an implementation cannot decode an image's data (typically /DCTDecode, /JPXDecode, /JBIG2Decode or /CCITTFaxDecode, depending on the engine), every check that needs that image's pixels yields REVIEW for the affected region, never pass, and the report adds a checksSkipped entry.",
+    "rule": "When an implementation cannot read an image's pixels (typically /DCTDecode, /JPXDecode, /JBIG2Decode or /CCITTFaxDecode, depending on the engine), every check that needs that image's pixels yields REVIEW for the affected region, never pass, and the report adds a checksSkipped entry with reason image-pixels-not-readable, the page, the count of such images, and detail = the terminal filter name when known.",
     "affects": [
       "A6",
       "A4.imageBackground"
     ],
     "verdictWhenUndecodable": "review",
-    "checksSkippedReason": "image-codec-not-decodable:<Filter>",
-    "$comment": "<Filter> is the terminal filter name without the slash, e.g. image-codec-not-decodable:DCTDecode. Such an image is also not a cover candidate (its darkness is unknown). Corpus cases whose verdict depends on this carry expect.acceptVerdicts."
+    "checksSkippedReason": "image-pixels-not-readable",
+    "$comment": "detail is the terminal filter name without the slash, e.g. DCTDecode (v1 put it in the reason as image-codec-not-decodable:<Filter>). Such an image is also not a cover candidate (its darkness is unknown). Corpus cases whose verdict depends on this carry expect.acceptVerdicts."
   },
   "checks": [
     {
       "id": "A1",
       "title": "不透明な図形・画像の下に取り出せるテキスト",
       "defaultVerdict": "fail",
-      "rule": "glyph drawn before a candidate with coveredFraction(glyphBox, candidate) >= coverFail",
+      "rule": "glyph drawn before a candidate with coveredFraction(glyphBox, candidate) >= coverFail. An opaque non-dark cover gives review (candidate.nonDarkOpaqueCover); a cover of unreadable colour (requirements.shading) gives review with noteKey fill-colour-unreadable; an image whose pixels cannot be read gives review with checksSkipped image-pixels-not-readable (imageDecoding); unread content gives checksSkipped content-truncated; Type 3 glyphs not inspected give type3Glyphs.notInspected; an internal failure while examining a page gives checksSkipped check-failed and the page-not-examined finding (verdicts.reviewFloor).",
       "coverFail": 0.85
     },
     {
@@ -103,7 +180,12 @@
       "id": "A3",
       "title": "未適用の /Redact、または注釈で隠している",
       "defaultVerdict": "fail",
-      "rule": "any /Redact annotation (regardless of what is under it); or an annotation appearance that is a candidate and covers text (coveredFraction >= coverPartialMin); /Highlight with opaque dark appearance counts"
+      "rule": "Any /Redact annotation (regardless of what is under it). Otherwise an annotation appearance (requirements.annotationAppearance) that covers earlier text, graded by the ladder.",
+      "ladder": {
+        "fail": "/Redact; or an opaque DARK appearance (candidate.dark, any subtype, /Highlight included) covering text with coveredFraction >= coverPartialMin",
+        "review": "an opaque appearance that is NOT dark covering text with coveredFraction >= coverFail (nonDarkOpaqueCover applied to annotations)",
+        "none": "a /Highlight whose appearance is not dark: a highlighter hides nothing"
+      }
     },
     {
       "id": "A4",
@@ -112,7 +194,7 @@
       "rule": "text whose |L(text) - L(background)| < hiddenContrast, where background = colour painted at the glyph centre BEFORE the text (paper white when nothing): FAIL regardless of proximity. Glyph box outside the CropBox, or fully clipped out: FAIL when within nearCandidatePt of a candidate, else REVIEW. Tr 3 text is A5, not A4.",
       "hiddenContrast": 0.15,
       "nearCandidatePt": 20.0,
-      "imageBackground": "when the topmost painter under the glyph centre is an image, background = mean luminance of the image pixels under the glyph box; if the image cannot be decoded: REVIEW plus checksSkipped {check:\"A4\", reason:\"image-codec-not-decodable:<Filter>\"} (see imageDecoding), never pass",
+      "imageBackground": "when the topmost painter under the glyph centre is an image, background = mean luminance of the image pixels under the glyph box; if its pixels cannot be read: REVIEW plus checksSkipped {check:\"A4\", reason:\"image-pixels-not-readable\", page, count, detail} (see imageDecoding), never pass",
       "sameAsBackgroundVerdict": "fail",
       "outsideClipOrCropBox": {
         "nearCandidateVerdict": "fail",
@@ -129,38 +211,46 @@
       "id": "A6",
       "title": "画像の上に黒い図形を重ねただけ",
       "defaultVerdict": "fail",
-      "rule": "image drawn, then a candidate over it, AND the decoded image pixels under the candidate are NOT dark (darkPixelFraction < candidate.image.minDarkPixelFraction). Pixels already dark = the image was really redacted (Acrobat / this editor) -> no finding. Image not decodable by the implementation: REVIEW plus checksSkipped {check:\"A6\", reason:\"image-codec-not-decodable:<Filter>\"} (see imageDecoding), never pass."
+      "rule": "image drawn, then a candidate over it, AND the decoded image pixels under the candidate are NOT dark (darkPixelFraction < candidate.image.minDarkPixelFraction). Pixels already dark = the image was really redacted (Acrobat / this editor) -> no finding. Image pixels not readable by the implementation: REVIEW plus checksSkipped {check:\"A6\", reason:\"image-pixels-not-readable\", page, count, detail} (see imageDecoding), never pass."
     },
     {
       "id": "A7",
       "title": "増分更新の旧版に別の内容",
       "defaultVerdict": "fail",
-      "rule": "walk startxref/Prev to list revisions; for each earlier revision, extract text per page; fail when an earlier revision has text not present in the final revision, review when revisions exist but cannot be parsed"
+      "rule": "list the earlier revisions (revisionDiscovery); for each, extract its text per page. Three outcomes: (1) legible text recovered that the current document does not show: fail; (2) legible text recovered and ALL of it shown in the current document (an ordinary incremental save): nothing is reported; (3) an earlier revision exists and nothing legible could be read from it: review with checksSkipped revisions-not-readable, detail revision. Outcome 2 requires that something was read: 'every recovered word is visible' is vacuously true of an empty list, which is outcome 3. Text is compared as words (letters or digits), each searched for in the current document's text with white space removed. The visible-text filter: the comparison ignores white space on both sides, so text that only re-flowed between two saves is visible (#114).",
+      "revisionDiscovery": "Walk startxref and each /Prev (a /Prev pointing forward is a linearized file's first-page section, not a revision). Then count the %%EOF markers: the chain accounts for one per revision, plus one extra for a linearized file (a /Linearized dictionary in the first 1024 bytes). A surplus, or a chain that cannot be followed, means earlier bytes the chain does not point at (#108): the file prefix ending at each %%EOF marker before the last is read as an earlier revision too. Such a prefix may be the document itself (a stray marker, #109), which outcome 2 then reports as nothing. A chain that cannot be followed, or a marker prefix that does not open, adds revisions-not-readable with detail chain (verdicts.reviewFloor).",
+      "compressedRevisions": "Whether an implementation can decompress an earlier revision is a capability: one that reads earlier revisions through a full parser decompresses them and reports nothing when all their text is visible (#111); one that cannot reports outcome 3 (review, revisions-not-readable/revision). A7 review means an earlier revision exists and could not be read, not that it is compressed.",
+      "onOpenFailure": "When the file cannot be opened (open-failed), A7 still runs: earlier revisions are found and read as usual, but with no current page the visible-text filter cannot run, so text recovered from an earlier revision is reported as REVIEW, never fail, with the recovered text shown, noteKey read-from-file-bytes and evidence source fileBytes. Outcome 3 (nothing legible read) is reported as usual."
     },
     {
       "id": "A8",
       "title": "構造ツリーの /ActualText・/Alt に黒塗り部分の文字",
       "defaultVerdict": "fail",
-      "rule": "/ActualText, /Alt or /E on a struct element or BDC property list whose content (MCIDs, or the element's page area) intersects a candidate, OR whose string is not found in the page's extractable text while the page has candidates; else listed under A9 as review"
+      "rule": "/ActualText, /Alt or /E on a struct element or BDC property list whose content (MCIDs, or the element's page area) intersects a candidate, OR whose string is not found in the page's extractable text while the page has candidates; else listed under A9 as review. Whether the string is in the page's text is decided by the same visible-text filter as A7: the comparison ignores white space on both sides",
+      "onOpenFailure": "When the file cannot be opened (reason open-failed; never for an encrypted file, which is A11's), A8 still runs, from the file's bytes: every /ActualText, /Alt and /E string found in the objects - literal or hex, PDFDocEncoding or UTF-16BE (or UTF-8) with its byte order mark, a direct string or one an indirect reference names, and inside Flate-compressed object streams and content streams where they can be decompressed - is reported as an A8 finding with verdict REVIEW and noteKey read-from-file-bytes, never fail: with no page to compare against, a tagged string over a blackout cannot be told from a caption. These are not listed again under A9. An implementation that repairs the file and opens it (for example by rebuilding the cross-reference table, or by taking the file's only catalog when the trailer's /Root names a missing object) examines the repaired document like any other, so A8 may be fail there (#112)."
     },
     {
       "id": "A9",
       "title": "文書情報・XMP・しおり・添付・フォーム値・注釈本文・非表示レイヤー・サムネイル",
       "defaultVerdict": "review",
-      "rule": "list every non-empty item with its content (for the screen only; the saved report keeps item kind and count, not the value)"
+      "rule": "list every non-empty item with its content (for the screen only; the saved report keeps item kind and count, not the value)",
+      "annotationText": "Every annotation's non-empty /Contents counts, whatever the subtype and whether or not the annotation covers anything (#107). It travels with the file without being part of the page.",
+      "documentInfo": "Every non-empty entry of the trailer /Info dictionary counts - the standard Title, Author, Subject, Keywords and every non-standard (custom) key - EXCEPT /CreationDate, /ModDate and /Trapped, which never count, and /Creator and /Producer, which count only when the value is a file path (a drive path such as C:\\..., a UNC path \\\\server\\..., or an absolute POSIX path /...; a URL is not a path).",
+      "onOpenFailure": "When the file cannot be opened (open-failed), A9 also runs from the file's bytes, and these are EXPECTED, not optional: (1) the document information dictionary, under the documentInfo rule above - the LAST trailer's /Info reference, reading only that object's own bytes (a string inside a content stream is never read as a title), or a dictionary written inline in the trailer; (2) attachments - the presence of /EmbeddedFile, listed with their file names (/UF, else /F) when readable; (3) JavaScript - the presence of /JS or /S /JavaScript. Outlines, form values, comment text and hidden layers need the document's structure and are not expected from the bytes; the replacement texts are A8's (A8 onOpenFailure) (#113)."
     },
     {
       "id": "A10",
       "title": "画像だけのページ",
       "defaultVerdict": "review",
-      "rule": "page with no extractable text and at least one image covering >= imageOnlyCoverage of the CropBox",
-      "imageOnlyCoverage": 0.8
+      "rule": "coverage = the sum, over all image paints on the page, of the area of each paint after CTM and the current clip path, intersected with the CropBox, divided by the CropBox area, capped at 1; review when there is no extractable text and coverage ≥ imageOnlyCoverage.",
+      "imageOnlyCoverage": 0.8,
+      "$comment": "Image paints are the images and image masks of the page content (not annotation appearances). Coverage never exceeds 1. A scan delivered as several strips is one scanned page (the strips add up); an image lying mostly off the CropBox counts only for the part on it (#105); two small images in opposite corners cover only their own area, not the box spanning them (#106). Overlapping paints are counted twice, which the cap at 1 bounds."
     },
     {
       "id": "A11",
       "title": "暗号化されていて検査できない",
       "defaultVerdict": "review",
-      "rule": "the file is encrypted and could not be opened with an empty user password (and no password was supplied)"
+      "rule": "fires only when the file is encrypted and cannot be opened: not with the empty user password, nor with the password supplied. A file that opens (owner-password-only encryption, or the right password supplied) is examined like any other and does not raise A11."
     }
   ],
   "finding": {
@@ -223,11 +313,21 @@
         "$comment": "text found under the cover. SCREEN ONLY: never written to a saved report, a log, or a file, by either implementation"
       },
       "detail": {
-        "type": "string"
+        "type": "string",
+        "$comment": "a short machine-readable code, never prose and never document text"
       },
       "evidence": {
         "type": "object",
         "$comment": "machine-comparable facts: coveredFraction, candidateSource, luminance, revisionIndex, ..."
+      },
+      "noteKey": {
+        "enum": [
+          "type3-not-inspected",
+          "fill-colour-unreadable",
+          "page-not-examined",
+          "read-from-file-bytes"
+        ],
+        "$comment": "v1.1: a fixed CODE, never prose, present only when the finding says something could not be examined (type3-not-inspected: a Type 3 glyph's drawing; fill-colour-unreadable: a shading or pattern cover; page-not-examined: an internal failure while examining the page, paired with checksSkipped check-failed, detail = the failure name; read-from-file-bytes: an A8 replacement text read from the bytes of a file that could not be opened, which could not be compared with any page - A8 onOpenFailure). See verdicts.wordingRules and verdicts.reviewFloor."
       }
     }
   },
@@ -281,7 +381,8 @@
         "type": "array",
         "items": {
           "type": "string"
-        }
+        },
+        "$comment": "the checks that ran, in check order (A1 ... A11); on open-failed that is A7, A8, A9 and A11"
       },
       "checksSkipped": {
         "type": "array",
@@ -296,18 +397,64 @@
               "type": "string"
             },
             "reason": {
-              "type": "string",
-              "$comment": "free text, except the fixed form image-codec-not-decodable:<Filter> (imageDecoding)"
+              "enum": [
+                "file-too-large",
+                "password-required",
+                "open-failed",
+                "page-limit",
+                "content-truncated",
+                "image-pixels-not-readable",
+                "type3-glyph-not-inspected",
+                "check-failed",
+                "revisions-not-readable"
+              ],
+              "$comment": "a fixed code (reasonCodes); never interpolated"
+            },
+            "page": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "$comment": "a fixed machine name qualifying the code (a filter name, a library failure name); never prose, never document text"
             }
           }
+        },
+        "reasonCodes": {
+          "file-too-large": "the file exceeds the implementation's size limit",
+          "password-required": "encrypted, and neither the empty nor the supplied password opens it",
+          "open-failed": "the file could not be opened; detail = the library's failure name. Listed for the page checks (A1-A6, A10) only: A7, A8 and A9 still run from the file's bytes (checks.A7/A8/A9.onOpenFailure) and A11 runs, so those are in checksRun",
+          "page-limit": "only the first pages were examined; count = pages examined",
+          "content-truncated": "part of a page's content could not be read; page",
+          "image-pixels-not-readable": "an image's pixels could not be read; page, count, detail = the filter when known",
+          "type3-glyph-not-inspected": "Type 3 glyph procedures whose drawing was not inspected; page, count",
+          "check-failed": "an internal failure while examining that page; page, detail = the failure name. Never pass: the page carries a review finding with noteKey page-not-examined (verdicts.reviewFloor). Carried on A1 only (verdicts.pageLevelCarrier)",
+          "revisions-not-readable": "A7: earlier revisions that could not be read; detail chain (the cross-reference chain cannot be followed, or an %%EOF-marker prefix does not open) or revision (an earlier revision exists and nothing legible was read from it). Floors: verdicts.reviewFloor"
         }
       },
       "notInspected": {
         "type": "array",
         "items": {
-          "type": "string"
+          "enum": [
+            "image-content-not-read",
+            "rescanned-paper-not-examinable",
+            "completeness-not-judged"
+          ]
         },
-        "$comment": "fixed sentences, e.g. 画像の中に写った文字の内容は読み取っていない"
+        "$comment": "fixed KEYS, not sentences (v1.1); each surface shows its own localised sentence for a key. Keys: image-content-not-read (text drawn inside an image is not read), rescanned-paper-not-examinable (a printed-and-rescanned document cannot be examined beyond its images), completeness-not-judged (whether everything that should be blacked out was is not judged)."
       },
       "elapsedMs": {
         "type": "number"
@@ -319,6 +466,7 @@
   },
   "manifest": {
     "$comment": "testdata/redaction-corpus/manifest.json: an object {specVersion, note, cases[]} (the browser checker's shape, adopted as is). Harnesses skip a case whose file is absent only when it is marked pending.",
+    "sharedExpectations": "The manifest states what ANY conformant implementation must produce. Where implementations differ in capability (for example decompressing earlier revisions, #111), the shared expectation is the weaker of the two, and a check one of them may legitimately raise is in neither checks nor mustNotFlag. Implementations can differ by capability in either direction - one decompresses earlier revisions and the other does not (#111), one repairs a file that does not open as written and the other does not (#112) - so a case accepts what any conformant implementation must produce, and the stronger assertion each side can make lives in its own suite, as local, implementation-specific tests. A green shared run proves only what the manifest states.",
     "type": "object",
     "required": [
       "specVersion",
@@ -366,7 +514,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "$comment": "check ids that MUST be raised"
+                  "$comment": "check ids that MUST be raised: a required subset (checksSemantics); others may be raised unless in mustNotFlag"
                 },
                 "mustNotFlag": {
                   "type": "array",
@@ -384,7 +532,7 @@
                       "pass"
                     ]
                   },
-                  "$comment": "ONLY for codec-dependent cases (imageDecoding): the verdicts accepted from an implementation that cannot decode the case's image. Must contain verdict, and may not add pass."
+                  "$comment": "ONLY for capability-dependent cases: the verdicts accepted from an implementation that cannot decode the case's image (imageDecoding), or that repairs a file the other cannot open (#112). Must contain verdict, and may not add pass."
                 }
               }
             },

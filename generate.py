@@ -16,15 +16,18 @@ Expected verdicts live in manifest.json, never here: one source of truth.
 Numbering follows the checker requirements:
   #1-#15  the shared corpus
   #16+    editor-only cases (generated on that side)
-  #90+    locally generated stand-ins for cases whose real article has to
-          be produced by a specific application (#12 Acrobat, #13 the
+  #90+    locally generated cases: stand-ins for ones whose real article
+          has to come from a specific application (#12 Acrobat, #13 the
           abyo editor). They are NOT substitutes in the manifest; they
           exist so this side can test for false positives today.
 
 Usage: python3 generate.py [outdir]
 """
 
+import hashlib
 import os
+import re
+import struct
 import sys
 import zlib
 
@@ -77,6 +80,15 @@ class Pdf:
         out += b"trailer\n" + trailer.encode() + b"\n"
         out += f"startxref\n{xref_at}\n%%EOF\n".encode()
         return bytes(out)
+
+
+def pdf_string(text: str) -> bytes:
+    """A PDF literal string, with the three characters that need it escaped.
+
+    Backslash first, so the escapes it introduces are not escaped again.
+    """
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    return b"(" + escaped.encode("ascii") + b")"
 
 
 def helvetica(pdf: Pdf) -> int:
@@ -136,6 +148,7 @@ def page(
     *,
     font: int | None = None,
     xobjects: dict[str, int] | None = None,
+    shadings: dict[str, int] | None = None,
     annots: str = "",
     extra_page: str = "",
 ) -> tuple[int, int]:
@@ -149,6 +162,8 @@ def page(
         resources += f"/Font<</F1 {font} 0 R>>"
     if xobjects:
         resources += "/XObject<<" + "".join(f"/{k} {v} 0 R" for k, v in xobjects.items()) + ">>"
+    if shadings:
+        resources += "/Shading<<" + "".join(f"/{k} {v} 0 R" for k, v in shadings.items()) + ">>"
     resources += ">>"
 
     pdf.put(
@@ -206,7 +221,7 @@ def case_03_black_square_annot() -> bytes:
     f = helvetica(pdf)
     annot = pdf.add(
         b"<</Type/Annot/Subtype/Square/Rect[68 694 358 720]"
-        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 4/Contents(masked)>>"
+        b"/IC[0 0 0]/C[0 0 0]/CA 1/F 4>>"
     )
     root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
     return pdf.build(root)
@@ -331,9 +346,16 @@ def case_11_metadata_author_path() -> bytes:
     f = helvetica(pdf)
     body = text_op(72, 760, "Public part of the document") + black_rect(68, 694, 290, 26)
     root, _ = page(pdf, body, font=f)
+    # Escaped through pdf_string, not written by hand: a literal
+    # backslash in a PDF string is "\\", and the hand-written version
+    # of this line lost every separator ("\s" is not an escape, so the
+    # backslash was dropped) and turned "\2026" into an octal character
+    # code. The path has to arrive intact or the fixture is not testing
+    # a path at all.
+    creator = pdf_string("\\\\fileserver\\share\\private\\2026\\draft-with-names.docx")
     info = pdf.add(
         b"<</Author(Yamada Taro)/Title(disclosure draft)"
-        b"/Creator(\\\\fileserver\\share\\private\\2026\\draft-with-names.docx)"
+        b"/Creator" + creator +
         b"/CreationDate(D:20260101000000Z)/ModDate(D:20260101000000Z)>>"
     )
     return pdf.build(root, info=info)
@@ -357,9 +379,17 @@ def case_14_black_band_normal() -> bytes:
 
 
 def case_15_scanned_image_only() -> bytes:
+    """A paper scan: one image over the whole page, no text layer.
+
+    The image covers the entire CropBox on purpose. A10 only reports a
+    text-free page when an image covers at least
+    SPEC.imageOnlyPage.minCropBoxCoverage of it, and a scan off the
+    glass is full-bleed; an inset image here would have made the fixture
+    disagree with the rule it is meant to exercise.
+    """
     pdf = Pdf()
     img = photo(pdf)
-    body = b"q\n451 0 0 638 72 102 cm\n/Im0 Do\nQ\n"
+    body = f"q\n{PAGE_W} 0 0 {PAGE_H} 0 0 cm\n/Im0 Do\nQ\n".encode("ascii")
     root, _ = page(pdf, body, xobjects={"Im0": img})
     return pdf.build(root)
 
@@ -415,6 +445,583 @@ def case_92_scanned_with_ocr_layer() -> bytes:
     return pdf.build(root)
 
 
+# ---------------------------------------------------------------- A11
+
+_PW_PAD = bytes(
+    [
+        0x28, 0xBF, 0x4E, 0x5E, 0x4E, 0x75, 0x8A, 0x41,
+        0x64, 0x00, 0x4E, 0x56, 0xFF, 0xFA, 0x01, 0x08,
+        0x2E, 0x2E, 0x00, 0xB6, 0xD0, 0x68, 0x3E, 0x80,
+        0x2F, 0x0C, 0xA9, 0xFE, 0x64, 0x53, 0x69, 0x7A,
+    ]
+)
+_ENC_ID = bytes.fromhex("0123456789abcdef0123456789abcdef")
+_ENC_P = -1
+
+
+def _rc4(key: bytes, data: bytes) -> bytes:
+    box = list(range(256))
+    j = 0
+    for i in range(256):
+        j = (j + box[i] + key[i % len(key)]) & 0xFF
+        box[i], box[j] = box[j], box[i]
+    out = bytearray()
+    i = j = 0
+    for byte in data:
+        i = (i + 1) & 0xFF
+        j = (j + box[i]) & 0xFF
+        box[i], box[j] = box[j], box[i]
+        out.append(byte ^ box[(box[i] + box[j]) & 0xFF])
+    return bytes(out)
+
+
+def _encrypted_pdf(user_pw: str, owner_pw: str) -> bytes:
+    """A readable page behind RC4, 40-bit, revision 2.
+
+    Written out by hand because the point of these two files is the
+    encryption dictionary itself, and the whole document has to be
+    encrypted with a key derived the way the PDF standard security
+    handler derives it. Algorithm numbers below are the ones in the
+    specification's security section.
+    """
+
+    def padded(pw: str) -> bytes:
+        return (pw.encode("latin-1") + _PW_PAD)[:32]
+
+    # Algorithm 3 — /O from the owner password.
+    owner_entry = _rc4(hashlib.md5(padded(owner_pw)).digest()[:5], padded(user_pw))
+    # Algorithm 2 — the file key.
+    digest = hashlib.md5()
+    digest.update(padded(user_pw))
+    digest.update(owner_entry)
+    digest.update(struct.pack("<i", _ENC_P))
+    digest.update(_ENC_ID)
+    file_key = digest.digest()[:5]
+    # Algorithm 4 — /U, revision 2.
+    user_entry = _rc4(file_key, _PW_PAD)
+
+    def object_key(num: int, gen: int) -> bytes:
+        extra = bytes(
+            [num & 0xFF, (num >> 8) & 0xFF, (num >> 16) & 0xFF, gen & 0xFF, (gen >> 8) & 0xFF]
+        )
+        return hashlib.md5(file_key + extra).digest()[:10]
+
+    body = b"BT /F1 12 Tf 72 700 Td (Encrypted but readable) Tj ET\n"
+    stream = _rc4(object_key(5, 0), body)
+
+    objects = {
+        1: b"<</Type/Catalog/Pages 2 0 R>>",
+        2: b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        3: f"<</Type/Page/Parent 2 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+        "/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>".encode("ascii"),
+        4: b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        5: b"<</Length "
+        + str(len(stream)).encode("ascii")
+        + b">>\nstream\n"
+        + stream
+        + b"\nendstream",
+        6: b"<</Filter/Standard/V 1/R 2/O <"
+        + owner_entry.hex().encode("ascii")
+        + b">/U <"
+        + user_entry.hex().encode("ascii")
+        + b">/P "
+        + str(_ENC_P).encode("ascii")
+        + b">>",
+    }
+
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = {}
+    for num in sorted(objects):
+        offsets[num] = len(out)
+        out += str(num).encode("ascii") + b" 0 obj\n" + objects[num] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 " + str(len(objects) + 1).encode("ascii") + b"\n"
+    out += b"0000000000 65535 f \n"
+    for num in sorted(objects):
+        out += f"{offsets[num]:010d} 00000 n \n".encode("ascii")
+    ident = _ENC_ID.hex().encode("ascii")
+    out += (
+        b"trailer\n<</Size "
+        + str(len(objects) + 1).encode("ascii")
+        + b"/Root 1 0 R/Encrypt 6 0 R/ID[<"
+        + ident
+        + b"><"
+        + ident
+        + b">]>>\nstartxref\n"
+        + str(xref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+    return bytes(out)
+
+
+def case_93_encrypted_opens_empty_password() -> bytes:
+    """Owner password only: encrypted, and opens with no password at all.
+
+    This is the shape A11 must stay quiet about. It is everywhere — a
+    great many published PDFs carry owner-password encryption to mark
+    them no-printing or no-copying while opening for any reader — so a
+    checker that reports every /Encrypt puts "needs a look" on documents
+    it read straight through, and a verdict that never varies is one
+    people learn to skip past.
+    """
+    return _encrypted_pdf(user_pw="", owner_pw="ownersecret")
+
+
+def case_94_encrypted_needs_password() -> bytes:
+    """A user password we do not have: nothing inside can be checked.
+
+    The A11 case proper. Every content check is unrunnable here, which
+    has to be reported as unchecked rather than passed.
+    """
+    return _encrypted_pdf(user_pw="usersecret", owner_pw="ownersecret")
+
+
+def _annotation_over_text(descriptor: str) -> bytes:
+    """One annotation laid over live text, described by `descriptor`."""
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(f"<</Type/Annot/Subtype/{descriptor}/F 4>>".encode("ascii"))
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+# A Highlight with no /QuadPoints is not a Highlight: the library drops
+# such an annotation from getAnnotations() altogether, and a fixture
+# without them silently tests nothing. Real ones always carry them.
+_QUAD = "/QuadPoints[68 720 358 720 68 694 358 694]"
+
+
+def case_95_grey_square_annot() -> bytes:
+    """An opaque but light annotation over text.
+
+    It conceals, and it comes off with the annotation, so the text is
+    recoverable — but nothing here says the author meant it as a
+    redaction, which is why this is a look-at rather than a failure.
+    """
+    return _annotation_over_text("Square/Rect[68 694 358 720]/IC[0.6 0.6 0.6]/C[0.6 0.6 0.6]/CA 1")
+
+
+def case_96_yellow_highlight_annot() -> bytes:
+    """An ordinary yellow highlighter over text: not a redaction at all.
+
+    Nothing is hidden, so nothing is reported. This file is here as a
+    guard: treating every Highlight over text as concealment put a
+    failure on every highlighted document that passed through, which is
+    the kind of false positive that teaches people the tool is wrong.
+    """
+    return _annotation_over_text(f"Highlight/Rect[68 694 358 720]{_QUAD}/C[1 1 0]/CA 1")
+
+
+def case_97_black_highlight_annot() -> bytes:
+    """The highlighter used as a marker pen to black text out.
+
+    Dark and over text, so this is the failure A3 names, even though the
+    subtype is the same as the harmless case above.
+    """
+    return _annotation_over_text(f"Highlight/Rect[68 694 358 720]{_QUAD}/C[0 0 0]/CA 1")
+
+
+def case_98_highlight_dark_appearance() -> bytes:
+    """A /Highlight that says yellow and draws opaque black.
+
+    The dictionary and the appearance stream are allowed to disagree,
+    and /AP is what the reader sees. Grading this annotation by /C would
+    read it as an ordinary highlighter and let it through, so this file
+    is the guard on judging the appearance instead.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    appearance = pdf.stream(
+        b"0 0 0 rg\n68 694 290 26 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[68 694 358 720]",
+    )
+    annot = pdf.add(
+        f"<</Type/Annot/Subtype/Highlight/Rect[68 694 358 720]{_QUAD}"
+        f"/C[1 1 0]/CA 1/F 4/AP<</N {appearance} 0 R>>>>".encode("ascii")
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_99_form_xobject_blackout() -> bytes:
+    """The blackout is drawn inside a Form XObject with its own /Matrix.
+
+    The form's /Matrix is the only thing that puts the rectangle over
+    the text, and the library reports it in the
+    paintFormXObjectBegin operator rather than as a `cm`. An
+    implementation that walks the operator list without handling that
+    op computes the rectangle at the form's own origin, finds it covers
+    nothing, and reports a document whose text is fully extractable
+    under an opaque black box as having no problem.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    form = pdf.stream(
+        b"0 0 0 rg\n0 0 290 26 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 290 26]/Matrix[1 0 0 1 68 694]",
+    )
+    body = text_op(72, 700, SECRET) + b"q\n/Fm0 Do\nQ\n"
+    root, _ = page(pdf, body, font=f, xobjects={"Fm0": form})
+    return pdf.build(root)
+
+
+def case_100_annotation_scaled_appearance() -> bytes:
+    """A black appearance scaled from a 10x10 /BBox onto a wide /Rect.
+
+    Nothing in the annotation dictionary says "black" — no /C, no /IC —
+    and the appearance stream is drawn in its own small space, to be
+    fitted to /Rect by the reader. Measuring the appearance without that
+    fitting puts the bar at a tenth of its size in the corner of the
+    page, where it covers nothing, and the document reads as clean with
+    an opaque black bar across a line of live text.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    appearance = pdf.stream(
+        b"0 0 0 rg\n0 0 10 10 re\nf\n",
+        "/Type/XObject/Subtype/Form/BBox[0 0 10 10]",
+    )
+    annot = pdf.add(
+        f"<</Type/Annot/Subtype/Highlight/Rect[68 694 358 720]{_QUAD}"
+        f"/CA 1/F 4/AP<</N {appearance} 0 R>>>>".encode("ascii")
+    )
+    root, _ = page(pdf, text_op(72, 700, SECRET), font=f, annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_101_stroke_colour_blackout() -> bytes:
+    """A black bar drawn as a wide stroke, with the fill colour set light.
+
+    PDF keeps the stroke colour (RG) and the fill colour (rg) apart. An
+    implementation that reads the fill colour for a stroke grades this
+    bar by the white fill and softens a covered line of text to "needs a
+    look" when it is squarely a failure.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = text_op(72, 700, SECRET) + (
+        b"1 1 1 rg\n"
+        b"0 0 0 RG\n26 w\n"
+        b"72 707 m\n362 707 l\nS\n"
+    )
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_102_white_stroke_over_text() -> bytes:
+    """The same shape in reverse: a white stroke, fill left at the default.
+
+    The cover hides the text from a reader but is not dark, so it earns
+    a look rather than a failure. Reading the fill colour here reports a
+    failure instead, which is the same bug pointing the other way.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    body = text_op(72, 700, SECRET) + b"1 1 1 RG\n26 w\n72 707 m\n362 707 l\nS\n"
+    root, _ = page(pdf, body, font=f)
+    return pdf.build(root)
+
+
+def case_103_shading_cover() -> bytes:
+    """A black-to-black gradient clipped over the text.
+
+    A shading's colour is not in the operator list, so no implementation
+    can call this a dark cover from the content stream alone. What it
+    must not do is lose it: the cover has to surface as something the
+    reader is told to look at, not vanish between the checks.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    shading = pdf.add(
+        b"<</ShadingType 2/ColorSpace/DeviceRGB/Coords[72 694 362 720]"
+        b"/Function<</FunctionType 2/Domain[0 1]/C0[0 0 0]/C1[0 0 0]/N 1>>"
+        b"/Extend[true true]>>"
+    )
+    body = text_op(72, 700, SECRET) + b"q\n72 694 290 26 re\nW n\n/Sh0 sh\nQ\n"
+    root, _ = page(pdf, body, font=f, shadings={"Sh0": shading})
+    return pdf.build(root)
+
+
+def case_104_type3_glyph_cover() -> bytes:
+    """The cover is a Type 3 glyph whose procedure fills a black box.
+
+    A known gap on the abyo.net checker, kept here so it stays visible
+    rather than being forgotten: the library does not put a Type 3
+    glyph's drawing in the page's operator list, and exposes it only
+    while rendering, so a walker of that list cannot see this cover at
+    all. The manifest states the true expectation (fail); the
+    acceptance suite lists this file as a known gap so the run does not
+    go green over it.
+
+    An implementation that parses content streams itself can expand the
+    /CharProcs entry and should get this right.
+    """
+    pdf = Pdf()
+    helv = helvetica(pdf)
+    charproc = pdf.stream(b"290 0 0 0 290 26 d1\n0 0 290 26 re\nf\n")
+    type3 = pdf.add(
+        b"<</Type/Font/Subtype/Type3/FontBBox[0 0 290 26]/FontMatrix[1 0 0 1 0 0]"
+        b"/CharProcs<</box " + str(charproc).encode("ascii") + b" 0 R>>"
+        b"/Encoding<</Type/Encoding/Differences[97/box]>>"
+        b"/FirstChar 97/LastChar 97/Widths[290]>>"
+    )
+    body = text_op(72, 700, SECRET) + b"BT\n/F2 1 Tf\n1 0 0 1 68 694 Tm\n(a) Tj\nET\n"
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    contents = pdf.stream(body)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {helv} 0 R/F2 {type3} 0 R>>>>"
+            f"/Contents {contents} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    root = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    return pdf.build(root)
+
+
+def case_105_image_mostly_off_page() -> bytes:
+    """A page with no text and an image hanging off the top edge.
+
+    The image is the size of the page and placed so only about a tenth
+    of it lands on the paper. A10's coverage is measured against the
+    CropBox after clipping, so this is not a scan and nothing is
+    reported. Measuring the union bounding box without clipping gives
+    1.0 here and reports review on a page that is almost entirely
+    blank.
+    """
+    pdf = Pdf()
+    img = photo(pdf)
+    body = f"q\n{PAGE_W} 0 0 {PAGE_H} 0 {PAGE_H - 84} cm\n/Im0 Do\nQ\n".encode("ascii")
+    root, _ = page(pdf, body, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_106_images_in_opposite_corners() -> bytes:
+    """A text-free page with a small image in two opposite corners.
+
+    Neither covers any meaningful part of the paper, so this is not a
+    scan. The first answer to A10 measured the union *bounding box* of
+    the page's images, which here spans almost the whole sheet: this
+    page measured 0.94 covered and was reported as a scan nobody could
+    read. Coverage is the sum of the clipped image areas instead.
+    """
+    pdf = Pdf()
+    img = photo(pdf)
+    body = (
+        b"q\n60 0 0 60 20 20 cm\n/Im0 Do\nQ\n"
+        + f"q\n60 0 0 60 {PAGE_W - 80} {PAGE_H - 80} cm\n/Im0 Do\nQ\n".encode("ascii")
+    )
+    root, _ = page(pdf, body, xobjects={"Im0": img})
+    return pdf.build(root)
+
+
+def case_107_annotation_text() -> bytes:
+    """A note left in an annotation's /Contents, over nothing.
+
+    Annotation text travels with the file without being part of the
+    page, so A9 reports it. The annotation here covers no text and is
+    not a cover candidate, so A9 is the only thing this file tests.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    annot = pdf.add(
+        b"<</Type/Annot/Subtype/Square/Rect[400 100 500 140]"
+        b"/IC[1 1 0]/C[1 1 0]/CA 1/F 4"
+        b"/Contents(reviewer: do not release the Yamada paragraph)>>"
+    )
+    root, _ = page(pdf, text_op(72, 700, "Public part of the document"), font=f,
+                   annots=f"/Annots[{annot} 0 R]")
+    return pdf.build(root)
+
+
+def case_108_broken_revision_chain() -> bytes:
+    """Case 08 again, with the trailer's /Prev entry broken.
+
+    The earlier revision's bytes are untouched and still hold the name;
+    only the record pointing at them is damaged. A reader sees the
+    redacted page either way.
+
+    Counting revisions as min(%%EOF markers, /Prev entries + 1) — which
+    is what keeps a linearized file from reading as an incremental save
+    — made this file count as a single revision, so nothing looked at
+    the earlier bytes and it came back clean. The surplus of %%EOF
+    markers over what the chain accounts for is the signal.
+    """
+    data = case_08_incremental_old_revision()
+    return re.sub(rb"/Prev\s+\d+", b"/Xrev 0", data)
+
+
+def case_109_stray_eof_marker() -> bytes:
+    """A correct, single-revision redaction with one stray %%EOF appended.
+
+    The guard on the surplus-%%EOF signal from case 108. There is no
+    earlier revision here: the extra marker is the kind of thing that
+    turns up in a stream's binary data. Reading the bytes before the
+    first marker therefore recovers the document's own visible text, and
+    an implementation that reports that as recovered from an earlier
+    revision puts a failure on a correctly redacted file — which is the
+    one thing this checker must never do.
+    """
+    return case_90_generated_correct_redaction() + b"\n%%EOF\n"
+
+
+def _incremental_info_save(stream_body: bytes, stream_extra: str = "") -> bytes:
+    """A one-page document, then an appended revision adding only /Info."""
+    pdf = Pdf()
+    f = helvetica(pdf)
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    content = pdf.stream(stream_body, stream_extra)
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>>>/Contents {content} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    catalog = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    base = pdf.build(catalog)
+
+    info_num = pdf.reserve()
+    out = bytearray(base)
+    offset = len(out)
+    out += (
+        f"{info_num} 0 obj\n".encode("ascii")
+        + b"<</Title(quarterly report)/Author(communications team)>>"
+        + b"\nendobj\n"
+    )
+    prev = base.rfind(b"startxref")
+    prev_xref = int(base[prev + len(b"startxref"):].split()[0])
+    xref_at = len(out)
+    out += b"xref\n"
+    out += f"{info_num} 1\n".encode("ascii")
+    out += f"{offset:010d} 00000 n \n".encode("ascii")
+    out += (
+        f"trailer\n<</Size {info_num + 1}/Root {catalog} 0 R/Info {info_num} 0 R"
+        f"/Prev {prev_xref}/ID [<ABYOCORPUS0001> <ABYOCORPUS0002>]>>\n"
+    ).encode("ascii")
+    out += f"startxref\n{xref_at}\n%%EOF\n".encode("ascii")
+    return bytes(out)
+
+
+def case_111_compressed_earlier_revision() -> bytes:
+    """Case 110 with the earlier revision's content stream compressed.
+
+    Which is what a real editor produces. Text extraction reads only
+    uncompressed content, so "nothing hidden in the earlier revision" is
+    not something an implementation can claim here — it read nothing
+    there at all. A look, with the reason given, rather than a pass.
+    """
+    return _incremental_info_save(
+        zlib.compress(text_op(72, 700, "Public part of the document")),
+        "/Filter/FlateDecode",
+    )
+
+
+def case_110_metadata_only_incremental_save() -> bytes:
+    """A legitimate incremental save that changed only the document info.
+
+    Nothing was redacted and nothing is hidden: the earlier revision
+    holds exactly the text that is still on the page. An implementation
+    that reports whatever it recovers from the earlier bytes, without
+    checking it against what is visible now, calls this a failure — and
+    this is an ordinary file that any editor produces when it saves a
+    title or an author over an existing document.
+    """
+    return _incremental_info_save(text_op(72, 700, "Public part of the document"))
+
+
+def case_112_unopenable_with_structure_text() -> bytes:
+    """Case 09, with /Root pointing at an object that is not there.
+
+    The file will not open, so none of the page checks can run. The
+    name is still sitting in an /ActualText entry where `strings` would
+    find it, and A8 and A9 read the file's bytes rather than its page
+    tree — so giving up on the whole document because it will not open
+    leaves that name unmentioned. A look rather than a failure: with no
+    page to compare against, a tagged string cannot be told from a
+    caption.
+    """
+    return re.sub(rb"/Root\s+\d+\s+0\s+R", b"/Root 9999 0 R",
+                  case_09_actualtext_leftover())
+
+
+def case_113_unopenable_with_document_info() -> bytes:
+    """Case 11, made unopenable the same way as case 112.
+
+    The author's name and the original file path are in /Info, and the
+    document will not open. A9 reads the information dictionary out of
+    the bytes on that path — standard keys and custom ones alike — so
+    the same facts come out either way. Outlines, attachments by name,
+    form values and hidden layers need the structure and stay
+    unreported; the spec's onOpenFailure section says which is which.
+    """
+    return re.sub(rb"/Root\s+\d+\s+0\s+R", b"/Root 9999 0 R",
+                  case_11_metadata_author_path())
+
+
+def case_114_reflowed_between_revisions() -> bytes:
+    """The same sentence, re-flowed across a line break by the next save.
+
+    Nothing is hidden: every word recovered from the earlier revision is
+    printed on the page. But the earlier revision wrote the sentence as
+    one run, carrying its own spaces, while the current one writes two
+    runs and the space at the line break belongs to neither — so the
+    recovered string is not a substring of the text as extracted, and an
+    implementation comparing them literally reports the document as
+    hiding the very sentence printed on it.
+
+    Text re-flowing between two saves is what editing a document does,
+    which is why this is here.
+    """
+    pdf = Pdf()
+    f = helvetica(pdf)
+    pages_num = pdf.reserve()
+    page_num = pdf.reserve()
+    sentence = "Public part of the document"
+    old_content = pdf.stream(text_op(72, 700, sentence))
+    pdf.put(
+        page_num,
+        (
+            f"<</Type/Page/Parent {pages_num} 0 R/MediaBox[0 0 {PAGE_W} {PAGE_H}]"
+            f"/Resources<</Font<</F1 {f} 0 R>>>>/Contents {old_content} 0 R>>"
+        ).encode("ascii"),
+    )
+    pdf.put(pages_num, f"<</Type/Pages/Kids[{page_num} 0 R]/Count 1>>".encode("ascii"))
+    catalog = pdf.add(f"<</Type/Catalog/Pages {pages_num} 0 R>>".encode("ascii"))
+    base = pdf.build(catalog)
+
+    head, tail = "Public part of", "the document"
+    new_body = (
+        b"BT\n0 0 0 rg\n/F1 14 Tf\n16 TL\n1 0 0 1 72 700 Tm\n"
+        + f"({head}) Tj\nT*\n({tail}) Tj\n".encode("ascii")
+        + b"ET\n"
+    )
+    replacement = (
+        b"<</Length " + str(len(new_body)).encode("ascii") + b">>\nstream\n"
+        + new_body + b"\nendstream"
+    )
+    out = bytearray(base)
+    offset = len(out)
+    out += f"{old_content} 0 obj\n".encode("ascii") + replacement + b"\nendobj\n"
+    prev = base.rfind(b"startxref")
+    prev_xref = int(base[prev + len(b"startxref"):].split()[0])
+    xref_at = len(out)
+    out += b"xref\n"
+    out += f"{old_content} 1\n".encode("ascii")
+    out += f"{offset:010d} 00000 n \n".encode("ascii")
+    out += (
+        f"trailer\n<</Size {old_content + 1}/Root {catalog} 0 R/Prev {prev_xref}"
+        f"/ID [<ABYOCORPUS0001> <ABYOCORPUS0002>]>>\n"
+    ).encode("ascii")
+    out += f"startxref\n{xref_at}\n%%EOF\n".encode("ascii")
+    return bytes(out)
+
+
 CASES = {
     "01-path-over-text": case_01_path_over_text,
     "02-image-over-text": case_02_image_over_text,
@@ -432,6 +1039,28 @@ CASES = {
     "90-generated-correct-redaction": case_90_generated_correct_redaction,
     "91-image-pixels-rewritten": case_91_image_pixels_rewritten,
     "92-scanned-with-ocr-layer": case_92_scanned_with_ocr_layer,
+    "93-encrypted-opens-empty-password": case_93_encrypted_opens_empty_password,
+    "94-encrypted-needs-password": case_94_encrypted_needs_password,
+    "95-grey-square-annot": case_95_grey_square_annot,
+    "96-yellow-highlight-annot": case_96_yellow_highlight_annot,
+    "97-black-highlight-annot": case_97_black_highlight_annot,
+    "98-highlight-dark-appearance": case_98_highlight_dark_appearance,
+    "99-form-xobject-blackout": case_99_form_xobject_blackout,
+    "100-annotation-scaled-appearance": case_100_annotation_scaled_appearance,
+    "101-stroke-colour-blackout": case_101_stroke_colour_blackout,
+    "102-white-stroke-over-text": case_102_white_stroke_over_text,
+    "103-shading-cover": case_103_shading_cover,
+    "104-type3-glyph-cover": case_104_type3_glyph_cover,
+    "105-image-mostly-off-page": case_105_image_mostly_off_page,
+    "106-images-in-opposite-corners": case_106_images_in_opposite_corners,
+    "107-annotation-text": case_107_annotation_text,
+    "108-broken-revision-chain": case_108_broken_revision_chain,
+    "109-stray-eof-marker": case_109_stray_eof_marker,
+    "110-metadata-only-incremental-save": case_110_metadata_only_incremental_save,
+    "111-compressed-earlier-revision": case_111_compressed_earlier_revision,
+    "112-unopenable-with-structure-text": case_112_unopenable_with_structure_text,
+    "113-unopenable-with-document-info": case_113_unopenable_with_document_info,
+    "114-reflowed-between-revisions": case_114_reflowed_between_revisions,
 }
 
 
